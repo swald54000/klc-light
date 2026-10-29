@@ -23,6 +23,7 @@ struct EffectLayer {
     QStringList keys;
     QColor start;    // Cycle start; the first step's color unless given.
     QList<Step> steps;
+    int closing = 0; // Duration back to the start color; 0 means the first step's.
     QString origin;  // Wave origin taken from the captured preset: "aqua-0".."aqua-5".
 };
 

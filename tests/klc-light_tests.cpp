@@ -8,6 +8,7 @@
 #include "keylabels.h"
 #include "layout.h"
 #include "profile.h"
+#include "protocol.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -286,7 +287,85 @@ private slots:
         QCOMPARE(baseEffect(base).origin, QString("aqua-1"));
     }
 
+    void protocolStaticAll()
+    {
+        Profile profile;
+        profile.base.color = QColor("#00E5FF");
+        compareWithFixture(buildPackets(profile, Layout::gs76()), "static-00e5ff.hex");
+    }
+
+    void protocolStaticZqsd()
+    {
+        Profile profile;
+        profile.base.color = QColor("#00E5FF");
+        for (const QString &id : {"KEY_Q", "KEY_W", "KEY_E", "KEY_A", "KEY_S", "KEY_D"})
+            profile.keys.insert(id, QColor("#FF0000"));
+        compareWithFixture(buildPackets(profile, Layout::gs76()), "static-zqsd.hex");
+    }
+
+    void protocolAres() { compareWithFixture(buildPackets(builtinProfile("ares"), Layout::gs76()), "ares.hex"); }
+    void protocolTron() { compareWithFixture(buildPackets(builtinProfile("tron"), Layout::gs76()), "tron.hex"); }
+
+    void protocolNoReactiveByDefault()
+    {
+        Profile profile;
+        profile.reactive.enabled = true;
+        const BuildResult result = buildPackets(profile, Layout::gs76());
+        QVERIFY(result.errors.isEmpty());
+        for (const Packet &packet : result.packets)
+            if (packet.kind == Packet::Feature && quint8(packet.data.at(0)) == 0x0e)
+                for (int i = 0; i < 42; ++i)
+                    QVERIFY(quint8(packet.data.at(4 + i * 12 + 9)) != 8);
+    }
+
+    void protocolReactiveAllowed()
+    {
+        Profile profile;
+        profile.base.color = QColor("#102030");
+        profile.reactive = {true, QColor("#A0B0C0"), 0x0123};
+        const BuildResult result = buildPackets(profile, Layout::gs76(), true);
+        const QByteArray first = result.packets.first().data;
+        const QByteArray fragment = first.mid(4, 12);
+        QCOMPARE(fragment.toHex(' '), QByteArray("10 20 30 a0 b0 c0 23 01 00 08 00 04"));
+    }
+
+    void protocolSizes()
+    {
+        for (const Profile &profile : {builtinProfile("ares"), Profile()})
+            for (const Packet &packet : buildPackets(profile, Layout::gs76()).packets)
+                QCOMPARE(packet.data.size(), packet.kind == Packet::Feature && quint8(packet.data.at(0)) != 0x09 ? 524
+                                             : packet.kind == Packet::Output ? 64 : 64);
+    }
+
+    void protocolLegacy()
+    {
+        QVERIFY(profileFromLegacy("ares", QString()));
+        const auto rgb = profileFromLegacy(QString(), "#00e5ff");
+        QVERIFY(rgb);
+        QCOMPARE(rgb->base.color, QColor("#00E5FF"));
+        QVERIFY(!profileFromLegacy("nope", QString()));
+    }
+
 private:
+
+    static void compareWithFixture(const BuildResult &result, const QString &name)
+    {
+        QVERIFY2(result.errors.isEmpty(), qPrintable(result.errors.join("; ")));
+        const auto expected = fixture(name);
+        QCOMPARE(result.packets.size(), expected.size());
+        for (int i = 0; i < expected.size(); ++i) {
+            QCOMPARE(QChar(result.packets[i].kind == Packet::Feature ? 'F' : 'O'), expected[i].first);
+            if (result.packets[i].data != expected[i].second) {
+                const QByteArray got = result.packets[i].data, want = expected[i].second;
+                int at = 0;
+                while (at < qMin(got.size(), want.size()) && got[at] == want[at])
+                    ++at;
+                QFAIL(qPrintable(QString("packet %1 differs at byte 0x%2: got %3, want %4")
+                                     .arg(i).arg(at, 0, 16)
+                                     .arg(QString(got.mid(at, 12).toHex(' ')), QString(want.mid(at, 12).toHex(' ')))));
+            }
+        }
+    }
 
     // Reads a fixture written by tools/gen_fixtures.py: one "F <hex>" or "O <hex>" per packet.
     static QList<QPair<QChar, QByteArray>> fixture(const QString &name)

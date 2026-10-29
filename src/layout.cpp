@@ -22,8 +22,16 @@ Layout::Layout() {
         const KeyData &d = kKeyData[i];
         m_byId.insert(QString::fromLatin1(d.id), m_keys.size());
         m_byHid.insert(d.hid, m_keys.size());
-        m_keys.append({QString::fromLatin1(d.id), d.hid, d.region, double(d.x), double(d.y), d.width});
+        m_keys.append({QString::fromLatin1(d.id), d.hid, d.region, double(d.x), double(d.y), d.width, d.visible});
     }
+}
+
+QList<Key> Layout::keys() const {
+    QList<Key> visible;
+    for (const Key &key : m_keys)
+        if (key.visible)
+            visible.append(key);
+    return visible;
 }
 
 const Key *Layout::byId(const QString &id) const {
@@ -60,7 +68,7 @@ QStringList Layout::group(const QString &name) const {
         return {"KEY_LEFTCTRL", "KEY_LEFTSHIFT", "KEY_LEFTALT", "KEY_LEFTMETA",
                 "KEY_RIGHTCTRL", "KEY_RIGHTSHIFT", "KEY_RIGHTALT"};
     QStringList ids;
-    for (const Key &key : m_keys)
+    for (const Key &key : keys())
         if (name == "all" || (name == "numpad" && (key.id.startsWith("KEY_KP") || key.id == "KEY_NUMLOCK")))
             ids << key.id;
     return ids;

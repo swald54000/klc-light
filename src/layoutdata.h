@@ -8,6 +8,7 @@ struct KeyData {
     Region region;
     int x, y;
     double width;
+    bool visible;
 };
 
 extern const KeyData kKeyData[];

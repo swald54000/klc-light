@@ -16,6 +16,7 @@ struct Key {
     Region region;
     double x, y;  // Centre in SteelSeries GG units; y grows upwards.
     double width; // In key widths.
+    bool visible = true; // False for codes the controller has but the keyboard does not show.
 };
 
 // The GS76 French ISO keyboard as the controller sees it.
@@ -23,7 +24,10 @@ class Layout {
 public:
     static const Layout &gs76();
 
-    QList<Key> keys() const { return m_keys; }
+    // The keys drawn and selectable in the editor.
+    QList<Key> keys() const;
+    // Every code the profile can address, hidden ones included.
+    QList<Key> allKeys() const { return m_keys; }
     const Key *byId(const QString &id) const;
     const Key *byHid(quint8 hid) const;
     // Every code the controller has in the region, in packet order (42 per region).

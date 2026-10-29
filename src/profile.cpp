@@ -76,6 +76,8 @@ QJsonObject toJson(const Profile &profile) {
         QJsonObject object{{"name", effect.name}, {"type", effect.type},
                            {"keys", QJsonArray::fromStringList(effect.keys)},
                            {"steps", stepsToJson(effect.steps)}, {"origin", effect.origin}};
+        if (effect.closing > 0)
+            object["closing"] = effect.closing;
         if (effect.steps.isEmpty() || effect.start != effect.steps.first().color)
             object["start"] = colorName(effect.start);
         effects.append(object);
@@ -139,6 +141,7 @@ std::optional<Profile> profileFromJson(const QJsonObject &object, QStringList *e
             effect.keys.append(key.toString());
         effect.steps = stepsFromJson(e.value("steps"), where, &problems);
         effect.origin = e.value("origin").toString();
+        effect.closing = e.value("closing").toInt(0);
         if (e.contains("start")) {
             if (const auto color = parseColor(e.value("start"), where, &problems))
                 effect.start = *color;

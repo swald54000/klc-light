@@ -34,7 +34,8 @@ EffectDef baseEffect(const BaseLayer &base) {
 }
 
 EffectDef layerEffect(const EffectLayer &layer) {
-    return {layer.start, layer.steps, layer.steps.isEmpty() ? 1 : layer.steps.first().duration, layer.origin};
+    const int closing = layer.closing > 0 ? layer.closing : layer.steps.isEmpty() ? 1 : layer.steps.first().duration;
+    return {layer.start, layer.steps, closing, layer.origin};
 }
 
 // Copied from EFFECTS in ~/.local/share/msi-perkeyrgb-setup/msi-kbd-effect, so the themes
