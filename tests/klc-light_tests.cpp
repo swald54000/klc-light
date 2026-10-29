@@ -10,6 +10,7 @@
 #include "effects.h"
 #include "keylabels.h"
 #include "layout.h"
+#include "preview.h"
 #include "profile.h"
 #include "protocol.h"
 #include "themeprofile.h"
@@ -608,6 +609,55 @@ private slots:
         QCOMPARE(result.value("ok").toBool(), true);
         QCOMPARE(result.value("packets").toInt(), 12);
         QCOMPARE(result.value("source").toString(), paths.stateTheme + "/keyboard.effect");
+    }
+
+
+    void previewStatic()
+    {
+        Profile profile;
+        profile.base.color = QColor("#00E5FF");
+        profile.keys.insert("KEY_Q", QColor("#FF0000"));
+        const Preview preview(profile, Layout::gs76());
+        QCOMPARE(preview.colorAt("KEY_Q", 0), QColor("#FF0000"));
+        QCOMPARE(preview.colorAt("KEY_Q", 12345), QColor("#FF0000"));
+        QCOMPARE(preview.colorAt("KEY_W", 777), QColor("#00E5FF"));
+    }
+
+    void previewCycle()
+    {
+        Profile profile;
+        EffectLayer pulse;
+        pulse.type = "pulse";
+        pulse.keys = {"KEY_Q"};
+        pulse.start = QColor("#500000");
+        pulse.steps = {{QColor("#FF1010"), 60}};
+        pulse.closing = 60;
+        pulse.origin = "aqua-0";
+        profile.effects = {pulse};
+        const Preview preview(profile, Layout::gs76());
+        QCOMPARE(preview.colorAt("KEY_Q", 0), QColor("#500000"));
+        const QColor half = preview.colorAt("KEY_Q", 30 * Preview::UnitMs);
+        QVERIFY(qAbs(half.red() - (0x50 + 0xFF) / 2) <= 1);
+        QCOMPARE(preview.colorAt("KEY_Q", 60 * Preview::UnitMs), QColor("#FF1010"));
+        QCOMPARE(preview.colorAt("KEY_Q", 120 * Preview::UnitMs), QColor("#500000"));
+    }
+
+    void previewWaveDelay()
+    {
+        const Layout &layout = Layout::gs76();
+        Profile profile;
+        EffectLayer wave;
+        wave.type = "wave";
+        wave.keys = {"KEY_Q", "KEY_P"};
+        wave.start = Qt::black;
+        wave.steps = {{Qt::white, 50}};
+        wave.origin = "aqua-1";
+        profile.effects = {wave};
+        const Preview preview(profile, layout);
+        const qint64 delay = qint64((layout.byId("KEY_P")->x - layout.byId("KEY_Q")->x) * 2);
+        QVERIFY(delay > 0);
+        for (qint64 t : {100, 260, 730})
+            QCOMPARE(preview.colorAt("KEY_P", t + delay), preview.colorAt("KEY_Q", t));
     }
 
 private:
