@@ -9,6 +9,7 @@
 #include "layout.h"
 #include "profile.h"
 #include "protocol.h"
+#include "themeprofile.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -346,7 +347,94 @@ private slots:
         QVERIFY(!profileFromLegacy("nope", QString()));
     }
 
+    void themeProfileOrder()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        const QByteArray klc = "{\"version\":1,\"base\":{\"type\":\"static\",\"color\":\"#112233\"}}";
+        write(paths.stateTheme + "/keyboard.rgb", "#445566\n");
+        QCOMPARE(resolveProfile(paths).profile->base.color, QColor("#445566"));
+        write(paths.stateTheme + "/keyboard.effect", "tron\n");
+        QCOMPARE(resolveProfile(paths).profile->effects.size(), 6);
+        write(paths.stateTheme + "/keyboard.klc.json", klc);
+        QCOMPARE(resolveProfile(paths).profile->base.color, QColor("#112233"));
+        QDir().mkpath(paths.userThemes + "/tron");
+        write(paths.userThemes + "/tron/keyboard.klc.json", QByteArray(klc).replace("112233", "778899"));
+        const Resolved resolved = resolveProfile(paths);
+        QCOMPARE(resolved.profile->base.color, QColor("#778899"));
+        QCOMPARE(resolved.source, paths.userThemes + "/tron/keyboard.klc.json");
+        QCOMPARE(resolved.savePath, paths.userThemes + "/tron/keyboard.klc.json");
+        QCOMPARE(resolved.themeName, QString("tron"));
+    }
+
+    void themeProfileNothing()
+    {
+        QTemporaryDir dir;
+        const Resolved resolved = resolveProfile(fakeTheme(dir, "tokyo-night"));
+        QVERIFY(!resolved.profile);
+        QVERIFY(resolved.errors.isEmpty());
+        QVERIFY(resolved.source.isEmpty());
+    }
+
+    void themeProfileNoOmarchy()
+    {
+        QTemporaryDir dir;
+        ThemePaths paths = fakeTheme(dir, "x");
+        QFile::remove(paths.themeName);
+        const Resolved resolved = resolveProfile(paths);
+        QVERIFY(!resolved.profile);
+        QVERIFY(resolved.errors.join(" ").contains("theme.name"));
+    }
+
+    void themeProfileInvalid()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        write(paths.stateTheme + "/keyboard.klc.json", "{\"version\":1,\"base\":{\"type\":\"static\",\"color\":\"#112233\"},\"keys\":{\"KEY_NOPE\":\"#FF0000\"}}");
+        const Resolved resolved = resolveProfile(paths);
+        QVERIFY(!resolved.profile);
+        QVERIFY(resolved.errors.join(" ").contains("KEY_NOPE"));
+    }
+
+    void themeProfileSaveStock()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tokyo-night");
+        const Resolved resolved = resolveProfile(paths);
+        Profile profile;
+        profile.base.color = QColor("#00E5FF");
+        QString error;
+        QVERIFY2(saveProfile(profile, resolved.savePath, &error), qPrintable(error));
+        QCOMPARE(QDir(paths.userThemes + "/tokyo-night").entryList(QDir::Files | QDir::Hidden), QStringList{"keyboard.klc.json"});
+    }
+
+    void themeProfileAtomic()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.path() + "/t/keyboard.klc.json";
+        Profile profile;
+        QString error;
+        QVERIFY(saveProfile(profile, path, &error));
+        profile.base.color = QColor("#ABCDEF");
+        QVERIFY(saveProfile(profile, path, &error));
+        QCOMPARE(QDir(dir.path() + "/t").entryList(QDir::Files | QDir::Hidden), QStringList{"keyboard.klc.json"});
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QVERIFY(file.readAll().contains("#ABCDEF"));
+    }
+
 private:
+
+    static ThemePaths fakeTheme(const QTemporaryDir &dir, const QString &name)
+    {
+        ThemePaths paths;
+        paths.stateTheme = dir.path() + "/state/current/theme";
+        paths.themeName = dir.path() + "/state/current/theme.name";
+        paths.userThemes = dir.path() + "/config/themes";
+        QDir().mkpath(paths.stateTheme);
+        write(paths.themeName, name.toUtf8() + "\n");
+        return paths;
+    }
 
     static void compareWithFixture(const BuildResult &result, const QString &name)
     {
