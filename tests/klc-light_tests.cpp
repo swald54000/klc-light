@@ -4,6 +4,7 @@
 #include <QtTest>
 
 #include "backend.h"
+#include "effects.h"
 #include "keylabels.h"
 #include "layout.h"
 #include "profile.h"
@@ -224,7 +225,95 @@ private slots:
         QVERIFY2(errors.join("\n").contains(expected), qPrintable(errors.join("\n")));
     }
 
+    void effectsAresMatchesPython()
+    {
+        QByteArray wave, pulse;
+        for (const auto &[kind, data] : fixture("ares.hex"))
+            if (kind == 'F' && quint8(data.at(0)) == 0x0b)
+                (data.at(2) == 0 ? pulse : wave) = data;
+        QString error;
+        QCOMPARE(transitions(builtinPalette("ares", false), &error), table(wave));
+        QCOMPARE(transitions(builtinPalette("ares", true), &error), table(pulse));
+        QVERIFY(error.isEmpty());
+    }
+
+    void effectsCloses()
+    {
+        const EffectDef def{QColor("#010101"), {{QColor("#FE00FF"), 10}, {QColor("#030303"), 10}}, 10, "aqua-1"};
+        QString error;
+        const QList<Transition> list = transitions(def, &error);
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        int r = 0, g = 0, b = 0;
+        for (const Transition &t : list) {
+            r += t.dr;
+            g += t.dg;
+            b += t.db;
+        }
+        QCOMPARE(r, 0);
+        QCOMPARE(g, 0);
+        QCOMPARE(b, 0);
+    }
+
+    void effectsScaled()
+    {
+        const EffectDef def{QColor("#FF0000"), {{QColor("#FF0000"), 40}, {QColor("#000000"), 1}}, 40, "aqua-0"};
+        QCOMPARE(scaled(def, 50, 100).start, QColor("#800000"));
+        QCOMPARE(scaled(def, 100, 200).steps.first().duration, 20);
+        QCOMPARE(scaled(def, 100, 200).closing, 20);
+        QCOMPARE(scaled(def, 100, 400).steps.last().duration, 1);
+    }
+
+    void effectsTooMany()
+    {
+        EffectDef def{Qt::red, {}, 10, "aqua-1"};
+        for (int i = 0; i < 17; ++i)
+            def.steps.append({i % 2 ? Qt::black : Qt::red, 10});
+        QString error;
+        transitions(def, &error);
+        QVERIFY2(error.contains("16"), qPrintable(error));
+    }
+
+    void effectsBaseTypes()
+    {
+        BaseLayer base;
+        base.type = "breathing";
+        base.color = QColor("#00E5FF");
+        const EffectDef breathing = baseEffect(base);
+        QCOMPARE(breathing.origin, QString("aqua-0"));
+        QCOMPARE(breathing.steps.size(), 2);
+        base.type = "rainbow";
+        QCOMPARE(baseEffect(base).steps.size(), 5);
+        QCOMPARE(baseEffect(base).origin, QString("aqua-1"));
+    }
+
 private:
+
+    // Reads a fixture written by tools/gen_fixtures.py: one "F <hex>" or "O <hex>" per packet.
+    static QList<QPair<QChar, QByteArray>> fixture(const QString &name)
+    {
+        QList<QPair<QChar, QByteArray>> packets;
+        QFile file(QString(KLC_FIXTURES) + "/" + name);
+        if (!file.open(QIODevice::ReadOnly))
+            qFatal("missing fixture %s", qPrintable(name));
+        for (const QByteArray &line : file.readAll().split('\n'))
+            if (line.size() > 2)
+                packets.append({QChar(line.at(0)), QByteArray::fromHex(line.mid(2))});
+        return packets;
+    }
+
+    // The transition table of an effect packet, as the controller stores it.
+    static QList<Transition> table(const QByteArray &packet)
+    {
+        QList<Transition> result;
+        const int count = quint8(packet.at(0x96));
+        for (int i = 0; i < count; ++i) {
+            const char *e = packet.constData() + 2 + i * 8;
+            result.append({qint8(e[2]), qint8(e[3]), qint8(e[4]),
+                           quint16(quint8(e[6]) | (quint8(e[7]) << 8))});
+        }
+        return result;
+    }
+
     static void write(const QString &path, const QByteArray &contents)
     {
         QFile file(path);
