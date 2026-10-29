@@ -14,8 +14,8 @@ struct Key {
     QString id;   // Linux input name of the physical key, e.g. "KEY_Q".
     quint8 hid;   // USB HID usage the controller addresses the key by.
     Region region;
-    double x, y;  // Centre in SteelSeries GG units; y grows upwards.
-    double width; // In key widths.
+    double x, y;  // Centre, in pixels of the reference photo of the keyboard; y grows downwards.
+    double w, h;  // Size in the same pixels.
     bool visible = true; // False for codes the controller has but the keyboard does not show.
 };
 

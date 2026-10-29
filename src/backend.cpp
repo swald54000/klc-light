@@ -29,25 +29,10 @@ Backend::Backend(ThemePaths paths, KeyLabels labels, Sender sender, QString colo
     : QObject(parent), m_paths(std::move(paths)), m_labels(std::move(labels)), m_sender(std::move(sender)),
       m_colorsPath(std::move(colorsPath)) {
     qRegisterMetaType<ApplyResult>();
-    // GG's positions are approximate around the navigation keys, so neighbours can sit
-    // closer than a key width. Each key gets at most its nominal width and stops halfway
-    // to its neighbours on the same row.
-    constexpr double unit = 35, gap = 2;
-    const QList<Key> keys = Layout::gs76().keys();
-    for (const Key &key : keys) {
-        double left = key.x - key.width * unit / 2, right = key.x + key.width * unit / 2;
-        for (const Key &other : keys) {
-            if (other.id == key.id || other.y != key.y)
-                continue;
-            const double middle = (key.x + other.x) / 2;
-            if (other.x > key.x)
-                right = std::min(right, std::max(middle, other.x - other.width * unit / 2) - gap / 2);
-            else
-                left = std::max(left, std::min(middle, other.x + other.width * unit / 2) + gap / 2);
-        }
+    for (const Key &key : Layout::gs76().keys())
         m_keys.append(QVariantMap{{"id", key.id}, {"label", m_labels.label(key)}, {"x", key.x}, {"y", key.y},
-                                  {"width", key.width}, {"left", left}, {"right", right}});
-    }
+                                  {"left", key.x - key.w / 2}, {"right", key.x + key.w / 2},
+                                  {"top", key.y - key.h / 2}, {"bottom", key.y + key.h / 2}});
 
     m_cooldown.setInterval(100);
     connect(&m_cooldown, &QTimer::timeout, this, [this] {

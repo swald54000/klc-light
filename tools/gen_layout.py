@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-# Generates src/layoutdata.cpp, the GS76 key table, from the sources the protocol was
-# recovered from: key positions from SteelSeries GG's msi-ge76-klc spec, HID codes and
-# regions from msi-perkeyrgb, Linux key names from the kernel headers. The GS76 here is
-# the French ISO keyboard, so the two ISO keys GG has no positions for are placed by hand.
+# Generates src/layoutdata.cpp, the GS76 key table: key rectangles measured on a photo of
+# the keyboard (below), HID codes and regions from msi-perkeyrgb, Linux key names from the
+# kernel headers.
 #
 # Run with: python3 -I tools/gen_layout.py
 
@@ -13,7 +12,6 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MSI_PERKEYRGB = os.path.expanduser("~/.local/share/msi-perkeyrgb")
-GE76_SPEC = os.path.expanduser("~/Work/klc-re/decrypted/all/msi-ge76-klc.lisp")
 INPUT_CODES = "/usr/include/linux/input-event-codes.h"
 
 sys.path.insert(0, MSI_PERKEYRGB)
@@ -23,17 +21,41 @@ REGIONS = ["alphanum", "enter", "modifiers", "numpad"]
 REGION_ENUM = {"alphanum": "Alphanum", "enter": "Enter", "modifiers": "Modifiers", "numpad": "Numpad"}
 AQUA_PREFIX = {"alphanum": 42, "enter": 11, "modifiers": 24, "numpad": 36}
 
-# The power key is in no lighting region. HID 49 is the ANSI backslash this ISO keyboard
-# does not have: hidden, not dropped, since the aqua preset still assigns it an effect.
-EXCLUDED = {102}
-HIDDEN = {49}
-# ISO keys: HID 50 (non-US hash, "*" on AZERTY) right of the apostrophe key, HID 100
-# (non-US backslash, "<") left of Z, and the tall ISO Enter between both letter rows.
-ISO_POSITIONS = {50: (599, 150), 100: (204, 120), 40: (630, 165)}
-# Linux maps both ISO codes like this (drivers/hid/hid-input.c).
-ISO_EVDEV = {50: 43, 100: 86}
+# Key rectangles measured on a top-down photo of the GS76 replacement keyboard (1000 px
+# wide, y downwards), by HID code: (left, right, top, bottom). The French GS76 uses the
+# same matrix: "* µ" is HID 49 above the one-row Enter, "< >" is HID 100 right of AltGr.
+# The photo itself is a measurement reference and is not part of the project.
+ROWS = {"f": (183, 212), "n": (223, 267), "q": (278, 322), "a": (332, 375), "z": (387, 430), "b": (442, 487)}
+PHOTO = {}
+def row(name, *keys):
+    top, bottom = ROWS[name]
+    for hid, left, right in keys:
+        PHOTO[hid] = (left, right, top, bottom)
+row("f", (41, 5, 42), (58, 57, 97), (59, 107, 147), (60, 157, 197), (61, 205, 245), (62, 258, 297),
+    (63, 307, 345), (64, 355, 395), (65, 405, 445), (66, 455, 495), (67, 507, 545), (68, 557, 595),
+    (69, 605, 643), (71, 660, 697), (73, 710, 748), (76, 760, 798), (70, 820, 853), (75, 867, 902), (78, 915, 950))
+row("n", (53, 5, 70), (30, 82, 122), (31, 133, 173), (32, 187, 227), (33, 238, 278), (34, 290, 330),
+    (35, 343, 383), (36, 395, 435), (37, 447, 487), (38, 500, 541), (39, 553, 593), (45, 605, 647),
+    (46, 658, 700), (42, 712, 797), (83, 820, 853), (84, 867, 902), (85, 915, 950), (86, 963, 997))
+row("q", (43, 5, 82), (20, 92, 132), (26, 144, 185), (8, 196, 237), (21, 249, 289), (23, 301, 341),
+    (28, 353, 394), (24, 406, 446), (12, 458, 499), (18, 510, 550), (19, 563, 602), (47, 617, 657),
+    (48, 668, 708), (49, 722, 798), (95, 820, 853), (96, 867, 902), (97, 915, 950))
+row("a", (57, 5, 97), (4, 108, 148), (22, 160, 200), (7, 212, 253), (9, 264, 305), (10, 317, 357),
+    (11, 369, 409), (13, 421, 461), (14, 473, 513), (15, 525, 567), (51, 578, 618), (52, 632, 672),
+    (40, 685, 798), (92, 820, 853), (93, 867, 902), (94, 915, 950))
+row("z", (225, 5, 125), (29, 136, 176), (27, 188, 228), (6, 240, 281), (25, 292, 333), (5, 345, 385),
+    (17, 397, 437), (16, 450, 490), (54, 500, 543), (55, 553, 597), (56, 605, 648), (229, 658, 743),
+    (82, 755, 797), (89, 820, 853), (90, 867, 902), (91, 915, 950))
+row("b", (224, 5, 95), (227, 103, 148), (226, 157, 208), (44, 220, 487), (230, 492, 535), (100, 547, 585),
+    (240, 598, 637), (228, 650, 688), (80, 703, 740), (81, 757, 797), (79, 812, 850), (98, 867, 898), (99, 915, 948))
+# The two tall keypad keys span two rows.
+PHOTO[87] = (963, 997, 278, 375)
+PHOTO[88] = (963, 997, 387, 487)
 
-WIDTHS = {44: 6.0, 42: 2.0, 43: 1.5, 57: 1.75, 229: 2.0, 98: 2.0}
+# The power key is in no lighting region, so it is not drawn either.
+EXCLUDED = {102}
+# Linux maps both "non-US" codes like this (drivers/hid/hid-input.c).
+EXTRA_EVDEV = {50: 43, 100: 86}
 
 
 def main():
@@ -41,7 +63,7 @@ def main():
     # msi-perkeyrgb keys its map by X11 keycode (evdev + 8), except Fn, which has no
     # keycode at all: the controller handles it internally.
     hid_to_evdev = {hid: x11 - 8 for x11, hid in keymap.items() if isinstance(x11, int)}
-    hid_to_evdev.update(ISO_EVDEV)
+    hid_to_evdev.update(EXTRA_EVDEV)
 
     names = {}
     for line in open(INPUT_CODES):
@@ -49,21 +71,13 @@ def main():
         if match and int(match.group(2)) not in names:
             names[int(match.group(2))] = match.group(1)
 
-    spec = open(GE76_SPEC).read()
-    nonvariant = spec.split("get-prism-sync-nonvariant-hid-info", 1)[1].split("get-prism-sync-variant-hid-info")[0]
-    english = spec.split("((0) '(", 1)[1].split("))", 1)[0]
-    positions = {int(h): (int(x), int(y)) for h, x, y in re.findall(r"\((\d+) (\d+) (\d+)\)", nonvariant + english)}
-    positions.update(ISO_POSITIONS)
-
     regions = json.load(open(os.path.join(ROOT, "tests", "fixtures", "regions.json")))
 
     keys = []
-    for hid, (x, y) in sorted(positions.items()):
-        if hid in EXCLUDED or hid in HIDDEN:
-            continue
+    for hid, (left, right, top, bottom) in sorted(PHOTO.items()):
         region = next(r for r in REGIONS if hid in regions[r])
         name = "KEY_FN" if hid == 240 else names[hid_to_evdev[hid]]
-        keys.append((name, hid, REGION_ENUM[region], x, y, WIDTHS.get(hid, 1.0)))
+        keys.append((name, hid, REGION_ENUM[region], (left + right) / 2, (top + bottom) / 2, right - left, bottom - top))
 
     # Codes the captured aqua preset lights but GG has no position for (Pause, Home, End,
     # Menu, JIS and Korean keys): kept so the preset's key mapping can be reproduced,
@@ -75,18 +89,21 @@ def main():
                 continue
             evdev = hid_to_evdev.get(hid)
             name = names.get(evdev) if evdev is not None else None
-            keys.append((name or "HID_%d" % hid, hid, REGION_ENUM[region], 0, 0, 0.0))
+            # Ids must be unique: HID 50 shares KEY_BACKSLASH with the visible HID 49.
+            if name in {k[0] for k in keys}:
+                name = None
+            keys.append((name or "HID_%d" % hid, hid, REGION_ENUM[region], 0, 0, 0, 0))
             placed.add(hid)
 
     out = [
-        "// Generated by tools/gen_layout.py from msi-ge76-klc.lisp (SteelSeries GG), msi-perkeyrgb",
+        "// Generated by tools/gen_layout.py from key rectangles measured on a GS76 keyboard photo, msi-perkeyrgb",
         "// and linux/input-event-codes.h. Regenerate rather than edit by hand.",
         "",
         '#include "layoutdata.h"',
         "",
         "const KeyData kKeyData[] = {",
     ]
-    out += ['    {"%s", %d, Region::%s, %d, %d, %.2f, %s},' % (k + ("true" if k[5] > 0 else "false",)) for k in keys]
+    out += ['    {"%s", %d, Region::%s, %.1f, %.1f, %d, %d, %s},' % (k + ("true" if k[5] > 0 else "false",)) for k in keys]
     out += ["};", "const int kKeyDataCount = %d;" % len(keys), ""]
     out.append("const quint8 kRegionHids[4][42] = {")
     for region in REGIONS:

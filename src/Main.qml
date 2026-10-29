@@ -70,59 +70,56 @@ ApplicationWindow {
                 }
             }
 
+            // The keyboard is three times wider than tall: it gets the whole width, and the
+            // layers and settings sit below it.
+            Pane {
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.min(width * 0.36, win.height * 0.45)
+                padding: 6
+                KeyboardView { anchors.fill: parent }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                Repeater {
+                    model: [
+                        { group: "wasd", text: qsTr("ZQSD / WASD") },
+                        { group: "function", text: qsTr("F1–F12") },
+                        { group: "digits", text: qsTr("Digits") },
+                        { group: "numpad", text: qsTr("Numpad") },
+                        { group: "modifiers", text: qsTr("Modifiers") },
+                        { group: "all", text: qsTr("All") }
+                    ]
+                    delegate: Button {
+                        required property var modelData
+                        flat: true
+                        text: modelData.text
+                        onClicked: backend.selectGroup(modelData.group)
+                    }
+                }
+                Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    font.pixelSize: 11
+                    opacity: 0.5
+                    text: qsTr("Click selects a key, Ctrl+click adds, drag selects a rectangle. Nothing reaches the keyboard until Apply.")
+                }
+            }
+
             RowLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 spacing: 12
 
                 Pane {
-                    Layout.preferredWidth: 230
+                    Layout.preferredWidth: 240
                     Layout.fillHeight: true
                     LayerList { anchors.fill: parent }
                 }
 
                 Pane {
                     Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    clip: true
-                    ColumnLayout {
-                        anchors.fill: parent
-                        KeyboardView {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                        }
-                        Flow {
-                            Layout.fillWidth: true
-                            spacing: 6
-                            Repeater {
-                                model: [
-                                    { group: "wasd", text: qsTr("ZQSD / WASD") },
-                                    { group: "function", text: qsTr("F1–F12") },
-                                    { group: "digits", text: qsTr("Digits") },
-                                    { group: "numpad", text: qsTr("Numpad") },
-                                    { group: "modifiers", text: qsTr("Modifiers") },
-                                    { group: "all", text: qsTr("All") }
-                                ]
-                                delegate: Button {
-                                    required property var modelData
-                                    flat: true
-                                    text: modelData.text
-                                    onClicked: backend.selectGroup(modelData.group)
-                                }
-                            }
-                        }
-                        Label {
-                            Layout.fillWidth: true
-                            wrapMode: Text.WordWrap
-                            font.pixelSize: 11
-                            opacity: 0.5
-                            text: qsTr("Click selects a key, Ctrl+click adds, drag selects a rectangle. Nothing reaches the keyboard until Apply.")
-                        }
-                    }
-                }
-
-                Pane {
-                    Layout.preferredWidth: 300
                     Layout.fillHeight: true
                     ScrollView {
                         anchors.fill: parent

@@ -16,9 +16,9 @@ class Preview {
 public:
     // Length of one controller time unit. An estimate until compared with the keyboard.
     static constexpr int UnitMs = 10;
-    // Waves travel left to right this many milliseconds per GG layout unit; an
-    // approximation of the firmware's wave origins.
-    static constexpr double WaveMsPerUnit = 2.0;
+    // Waves travel left to right this many milliseconds per layout pixel (about 70 ms per
+    // key); an approximation of the firmware's wave origins.
+    static constexpr double WaveMsPerUnit = 1.34;
 
     Preview(const Profile &profile, const Layout &layout);
 

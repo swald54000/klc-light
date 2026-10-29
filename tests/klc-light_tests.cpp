@@ -199,6 +199,8 @@ private slots:
         QCOMPARE(fr.label(*layout.byId("KEY_LEFTBRACE")), QString("^"));
         QCOMPARE(fr.label(*layout.byId("KEY_SCROLLLOCK")), QString("ScrLk"));
         QCOMPARE(fr.label(*layout.byId("KEY_FN")), QString("Fn"));
+        QCOMPARE(fr.label(*layout.byId("KEY_BACKSLASH")), QString("*"));
+        QCOMPARE(fr.label(*layout.byId("KEY_102ND")), QString("<"));
         QCOMPARE(fr.label(*layout.byId("KEY_KP7")), QString("7"));
         QCOMPARE(fr.label(*layout.byId("KEY_KPDOT")), QString("."));
         const KeyLabels us = KeyLabels::fromRmlvo("us", "");
@@ -662,7 +664,7 @@ private slots:
         wave.origin = "aqua-1";
         profile.effects = {wave};
         const Preview preview(profile, layout);
-        const qint64 delay = qint64((layout.byId("KEY_P")->x - layout.byId("KEY_Q")->x) * 2);
+        const qint64 delay = qint64((layout.byId("KEY_P")->x - layout.byId("KEY_Q")->x) * Preview::WaveMsPerUnit);
         QVERIFY(delay > 0);
         for (qint64 t : {100, 260, 730})
             QCOMPARE(preview.colorAt("KEY_P", t + delay), preview.colorAt("KEY_Q", t));
@@ -937,6 +939,37 @@ private slots:
         run.backend->undo();
         QCOMPARE(run.backend->profile().effects.size(), 6);
         QCOMPARE(run.backend->profile().base.type, QString("static"));
+    }
+
+
+    void layoutMatchesPhoto()
+    {
+        // Measured on a top-down photo of the GS76 keyboard (pixels, y downwards).
+        const Layout &layout = Layout::gs76();
+        const Key *backslash = layout.byId("KEY_BACKSLASH");
+        QVERIFY(backslash && backslash->visible && backslash->hid == 49);
+        QVERIFY(qAbs(backslash->x - 760) <= 2 && qAbs(backslash->y - 300) <= 2);
+        const Key *iso = layout.byId("KEY_102ND");
+        QVERIFY(iso && iso->visible && iso->hid == 100);
+        const Key *altgr = layout.byId("KEY_RIGHTALT"), *fn = layout.byId("KEY_FN");
+        QVERIFY(iso->x > altgr->x && iso->x < fn->x);
+        QCOMPARE(iso->y, altgr->y);
+        const Key *space = layout.byId("KEY_SPACE");
+        QVERIFY(space->w > 5 * layout.byId("KEY_Q")->w);
+        const Key *plus = layout.byId("KEY_KPPLUS");
+        QVERIFY(plus->h > 2 * layout.byId("KEY_KP9")->h);
+        QVERIFY(!layout.byHid(50) || !layout.byHid(50)->visible);
+    }
+
+
+    void layoutIdsUnique()
+    {
+        QSet<QString> ids;
+        for (const Key &key : Layout::gs76().allKeys()) {
+            QVERIFY2(!ids.contains(key.id), qPrintable(key.id));
+            ids.insert(key.id);
+            QCOMPARE(Layout::gs76().byId(key.id)->hid, key.hid);
+        }
     }
 
 private:

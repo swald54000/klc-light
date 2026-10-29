@@ -6,8 +6,8 @@ struct KeyData {
     const char *id;
     quint8 hid;
     Region region;
-    int x, y;
-    double width;
+    double x, y; // Centre, photo pixels, y downwards.
+    int w, h;    // Size, photo pixels.
     bool visible;
 };
 

@@ -2,8 +2,9 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
 
-// The GS76 keyboard, drawn from the layout and animated by the preview. Click selects a
-// key (Ctrl or Shift adds), dragging draws a selection rectangle.
+// The GS76 keyboard, drawn to the key rectangles measured on a photo of it and lit like
+// the real one: dark keycaps, the light showing through the legends and around the edges.
+// Click selects a key (Ctrl or Shift adds), dragging draws a selection rectangle.
 Item {
     id: view
     implicitWidth: 0
@@ -12,20 +13,19 @@ Item {
     // Milliseconds since the editor opened; drives the preview.
     property real clock: 0
     readonly property var keys: backend.keys
-    // GG layout units: keys sit about 35 apart, x grows rightwards, y upwards.
-    readonly property real unit: 35
-    readonly property real minX: Math.min.apply(null, keys.map(k => k.left))
-    readonly property real maxX: Math.max.apply(null, keys.map(k => k.right))
-    readonly property real minY: Math.min.apply(null, keys.map(k => k.y)) - unit / 2
-    readonly property real maxY: Math.max.apply(null, keys.map(k => k.y)) + unit / 2
+    // Layout pixels, as measured on the photo, plus a margin of chassis around the keys.
+    readonly property real margin: 14
+    readonly property real minX: Math.min.apply(null, keys.map(k => k.left)) - margin
+    readonly property real maxX: Math.max.apply(null, keys.map(k => k.right)) + margin
+    readonly property real minY: Math.min.apply(null, keys.map(k => k.top)) - margin
+    readonly property real maxY: Math.max.apply(null, keys.map(k => k.bottom)) + margin
     readonly property real scale: Math.min(width / (maxX - minX), height / (maxY - minY))
     readonly property real offsetX: (width - (maxX - minX) * scale) / 2
     readonly property real offsetY: (height - (maxY - minY) * scale) / 2
 
     function keyRect(k) {
-        const h = unit * 0.88 * scale
-        return Qt.rect(offsetX + (k.left - minX) * scale, offsetY + (maxY - k.y) * scale - h / 2,
-                       (k.right - k.left) * scale, h)
+        return Qt.rect(offsetX + (k.left - minX) * scale, offsetY + (k.top - minY) * scale,
+                       (k.right - k.left) * scale, (k.bottom - k.top) * scale)
     }
 
     function keysIn(r) {
@@ -42,28 +42,74 @@ Item {
         onTriggered: view.clock += interval
     }
 
+    // The laptop deck around the keys.
+    Rectangle {
+        x: view.offsetX
+        y: view.offsetY
+        width: (view.maxX - view.minX) * view.scale
+        height: (view.maxY - view.minY) * view.scale
+        radius: 10 * view.scale
+        gradient: Gradient {
+            GradientStop { position: 0; color: "#1b1c20" }
+            GradientStop { position: 1; color: "#111215" }
+        }
+        border.color: "#2a2b31"
+    }
+
     Repeater {
         model: view.keys
-        delegate: Rectangle {
+        delegate: Item {
+            id: key
             required property var modelData
             readonly property rect r: view.keyRect(modelData)
             readonly property bool selected: backend.selection.indexOf(modelData.id) >= 0
+            // Reading revision re-evaluates the color after every edit.
+            readonly property color light: backend.revision >= 0 ? backend.previewColor(modelData.id, view.clock) : "black"
+            // How bright the LED is, to fade the glow out for dark or switched-off keys.
+            readonly property real level: Math.max(light.r, light.g, light.b)
             x: r.x
             y: r.y
             width: r.width
             height: r.height
-            radius: Math.min(4, theme.radius)
-            // Reading revision re-evaluates the color after every edit.
-            color: backend.revision >= 0 ? backend.previewColor(modelData.id, view.clock) : "black"
-            border.width: selected ? 2 : 1
-            border.color: selected ? "white" : Qt.rgba(1, 1, 1, 0.12)
 
+            // Light leaking from under the keycap.
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: -Math.max(1.5, 3 * view.scale)
+                radius: 6 * view.scale
+                color: key.light
+                opacity: 0.55 * key.level
+            }
+
+            // The keycap.
+            Rectangle {
+                id: cap
+                anchors.fill: parent
+                radius: 4 * view.scale
+                gradient: Gradient {
+                    GradientStop { position: 0; color: "#2a2b30" }
+                    GradientStop { position: 1; color: "#1d1e22" }
+                }
+                border.width: key.selected ? Math.max(2, 2.5 * view.scale) : 1
+                border.color: key.selected ? "white" : Qt.rgba(0, 0, 0, 0.6)
+            }
+
+            // The legend, lit from below in the key's color.
             Text {
                 anchors.centerIn: parent
-                text: parent.modelData.label
-                font.pixelSize: Math.max(8, parent.height * 0.32)
-                // Black or white, whichever reads on the key's current color.
-                color: (0.299 * parent.color.r + 0.587 * parent.color.g + 0.114 * parent.color.b) > 0.55 ? "black" : "white"
+                width: parent.width - 4
+                height: parent.height * 0.6
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                // Shrinks long legends (PrtSc, ScrLk) to fit their key instead of cutting them.
+                fontSizeMode: Text.Fit
+                minimumPixelSize: 5
+                text: key.modelData.label
+                font.pixelSize: Math.max(7, parent.height * 0.42)
+                font.bold: true
+                font.letterSpacing: 0.5
+                // A switched-off LED leaves a faint grey legend, as on the real keyboard.
+                color: key.level < 0.08 ? "#4a4b52" : Qt.lighter(key.light, 1.15)
             }
         }
     }
