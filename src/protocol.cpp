@@ -200,7 +200,9 @@ BuildResult buildPackets(const Profile &profile, const Layout &layout, bool allo
         const QList<Transition> table = transitions(def, &error);
         const QByteArray templatePacket = aquaEffectPacket(originNumber(def.origin));
         if (!error.isEmpty() || templatePacket.isEmpty()) {
-            result.errors.append(QString("effect %1: %2").arg(slot + 1).arg(error.isEmpty() ? "unknown origin" : error));
+            const bool base = profile.base.type != "static" && slot == 0;
+            const QString name = base ? QString("base") : QString("effect %1").arg(slot + (profile.base.type != "static" ? 0 : 1));
+            result.errors.append(QString("%1: %2").arg(name, error.isEmpty() ? "unknown origin" : error));
             continue;
         }
         result.packets.append({Packet::Feature, effectPacket(templatePacket, slot, def, table)});

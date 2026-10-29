@@ -35,7 +35,8 @@ bool HidapiTransport::waitAndOpen(int timeoutMs) {
 }
 
 bool HidapiTransport::sendFeature(const QByteArray &data) {
-    if (hid_send_feature_report(m_device, reinterpret_cast<const unsigned char *>(data.constData()), size_t(data.size())) < 0) {
+    // A short write is a failure too, as in msi-perkeyrgb.
+    if (hid_send_feature_report(m_device, reinterpret_cast<const unsigned char *>(data.constData()), size_t(data.size())) != data.size()) {
         m_error = QString::fromWCharArray(hid_error(m_device));
         return false;
     }
@@ -43,7 +44,7 @@ bool HidapiTransport::sendFeature(const QByteArray &data) {
 }
 
 bool HidapiTransport::sendOutput(const QByteArray &data) {
-    if (hid_write(m_device, reinterpret_cast<const unsigned char *>(data.constData()), size_t(data.size())) < 0) {
+    if (hid_write(m_device, reinterpret_cast<const unsigned char *>(data.constData()), size_t(data.size())) != data.size()) {
         m_error = QString::fromWCharArray(hid_error(m_device));
         return false;
     }

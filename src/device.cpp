@@ -24,6 +24,10 @@ void Device::recordSend() const {
 }
 
 ApplyResult Device::apply(const QList<Packet> &packets) {
+    return applyLatest([&packets] { return BuildResult{packets, {}}; });
+}
+
+ApplyResult Device::applyLatest(const std::function<BuildResult()> &build) {
     // One send at a time across the editor and the theme hooks.
     QLockFile lock(m_runtimeDir + "/klc-light.lock");
     if (!lock.tryLock(LockWaitMs))
@@ -35,8 +39,19 @@ ApplyResult Device::apply(const QList<Packet> &packets) {
     if (elapsed >= 0 && elapsed < MinIntervalMs)
         m_sleepMs(int(MinIntervalMs - elapsed));
 
+    const BuildResult built = build();
+    if (!built.errors.isEmpty())
+        return {ApplyError::Invalid, built.errors.join("\n")};
+    const QList<Packet> &packets = built.packets;
+    if (packets.isEmpty())
+        return {};
+
     QString error;
     if (!m_binder.bind(&error)) {
+        // A bind that timed out may still finish as root; detaching is harmless when the
+        // keyboard is not bound, and keeps it from being left attached.
+        QString unbindError;
+        m_binder.unbind(&unbindError);
         const bool missing = error.contains("not found") || error.contains("missing");
         return {missing ? ApplyError::BinderMissing : ApplyError::BindFailed,
                 QCoreApplication::translate("Device", "Could not attach the keyboard: %1").arg(error)};
@@ -52,6 +67,7 @@ ApplyResult Device::apply(const QList<Packet> &packets) {
         for (const Packet &packet : packets) {
             const bool ok = packet.kind == Packet::Feature ? m_transport.sendFeature(packet.data)
                                                            : m_transport.sendOutput(packet.data);
+            m_sleepMs(PacketGapMs);
             if (!ok) {
                 result = {ApplyError::SendFailed,
                           QCoreApplication::translate("Device", "Sending to the keyboard failed: %1").arg(m_transport.lastError())};

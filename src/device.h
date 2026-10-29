@@ -28,7 +28,7 @@ public:
     virtual bool unbind(QString *error) = 0;
 };
 
-enum class ApplyError { None, Locked, BinderMissing, BindFailed, DeviceMissing, SendFailed };
+enum class ApplyError { None, Locked, Invalid, BinderMissing, BindFailed, DeviceMissing, SendFailed };
 
 struct ApplyResult {
     ApplyError error = ApplyError::None;
@@ -42,11 +42,18 @@ public:
     static constexpr int MinIntervalMs = 5000;
     static constexpr int OpenTimeoutMs = 3000;
     static constexpr int LockWaitMs = 15000;
+    // msi-perkeyrgb waits this long after every packet: the controller misbehaves when
+    // packets arrive too fast.
+    static constexpr int PacketGapMs = 10;
 
     Device(Transport &transport, Binder &binder, QString runtimeDir, std::function<void(int)> sleepMs,
            std::function<qint64()> nowMs = {});
 
     ApplyResult apply(const QList<Packet> &packets);
+    // Builds the packets only once it is this send's turn (after the lock and the
+    // interval), so quick theme switches end with the latest theme on the keyboard.
+    // Build errors come back as ApplyError::Invalid; no packets means nothing to do.
+    ApplyResult applyLatest(const std::function<BuildResult()> &build);
 
 private:
     qint64 lastSend() const;

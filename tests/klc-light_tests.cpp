@@ -27,14 +27,15 @@ struct FakeLog {
     QStringList events;
     qint64 now = 1'000'000;
     QList<int> sleeps;
+    QList<QByteArray> packets;
 };
 
 class FakeTransport : public Transport {
 public:
     explicit FakeTransport(FakeLog &log) : m_log(log) {}
     bool waitAndOpen(int) override { m_log.events << "open"; return openOk; }
-    bool sendFeature(const QByteArray &) override { return send(); }
-    bool sendOutput(const QByteArray &) override { return send(); }
+    bool sendFeature(const QByteArray &data) override { m_log.packets << data; return send(); }
+    bool sendOutput(const QByteArray &data) override { m_log.packets << data; return send(); }
     void close() override { m_log.events << "close"; }
     QString lastError() const override { return "fake error"; }
     bool openOk = true;
@@ -525,10 +526,11 @@ private slots:
         Device device = fakeDevice(transport, binder, dir, log);
         const QList<Packet> packets = buildPackets(Profile(), Layout::gs76()).packets;
         QCOMPARE(int(device.apply(packets).error), int(ApplyError::None));
-        QVERIFY(log.sleeps.isEmpty());
-        log.now += 1000;
+        QVERIFY(!log.sleeps.contains(4000));
+        log.now = log.now + 1000 - qint64(log.sleeps.size()) * Device::PacketGapMs;
+        log.sleeps.clear();
         QCOMPARE(int(device.apply(packets).error), int(ApplyError::None));
-        QCOMPARE(log.sleeps, QList<int>{4000});
+        QCOMPARE(log.sleeps.first(), 4000);
         QCOMPARE(log.events.count("bind"), 2);
     }
 
@@ -544,6 +546,8 @@ private slots:
         QCOMPARE(int(result.error), int(ApplyError::BindFailed));
         QVERIFY(!log.events.contains("open"));
         QVERIFY(log.sleeps.isEmpty());
+        // A timed-out bind may still complete as root: detach anyway.
+        QCOMPARE(log.events, QStringList({"bind", "unbind"}));
 
         QElapsedTimer timer;
         timer.start();
@@ -771,6 +775,81 @@ private slots:
         QCOMPARE(translator.translate("Main", "%n key(s) selected", nullptr, 3), QString("%n touches sélectionnées"));
     }
 
+
+    void devicePausesBetweenPackets()
+    {
+        QTemporaryDir dir;
+        FakeLog log;
+        FakeTransport transport(log);
+        FakeBinder binder(log);
+        Device device = fakeDevice(transport, binder, dir, log);
+        QCOMPARE(int(device.apply(buildPackets(builtinProfile("tron"), Layout::gs76()).packets).error), int(ApplyError::None));
+        QCOMPARE(log.sleeps, QList<int>(12, Device::PacketGapMs));
+        QCOMPARE(Device::PacketGapMs, 10);
+    }
+
+    void effectsFullRangeBaseEffects_data()
+    {
+        QTest::addColumn<QString>("type");
+        QTest::addColumn<QString>("color");
+        QTest::newRow("rainbow") << "rainbow" << "#FF0000";
+        QTest::newRow("breathing white") << "breathing" << "#FFFFFF";
+        QTest::newRow("flashing red") << "flashing" << "#FF0000";
+    }
+
+    void effectsFullRangeBaseEffects()
+    {
+        QFETCH(QString, type);
+        QFETCH(QString, color);
+        Profile profile;
+        profile.base.type = type;
+        profile.base.color = QColor(color);
+        const BuildResult result = buildPackets(profile, Layout::gs76());
+        QVERIFY2(result.errors.isEmpty(), qPrintable(result.errors.join("; ")));
+        QString error;
+        int sum[3] = {0, 0, 0};
+        for (const Transition &t : transitions(baseEffect(profile.base), &error)) {
+            QVERIFY(qAbs(t.dr) <= 127 && qAbs(t.dg) <= 127 && qAbs(t.db) <= 127);
+            sum[0] += t.dr; sum[1] += t.dg; sum[2] += t.db;
+        }
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(sum[0], 0);
+        QCOMPARE(sum[1], 0);
+        QCOMPARE(sum[2], 0);
+    }
+
+    void effectsTotalDurationFits()
+    {
+        const EffectDef def{Qt::red, {{Qt::black, 40000}}, 40000, "aqua-1"};
+        QString error;
+        transitions(def, &error);
+        QVERIFY2(error.contains("65535"), qPrintable(error));
+    }
+
+    void cliRapidThemeSwitch()
+    {
+        // Theme A is applied; theme B's apply starts within the interval, and while it
+        // waits the theme switches to C. C must be what reaches the keyboard.
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "a");
+        write(paths.stateTheme + "/keyboard.rgb", "#111111\n");
+        CliRun run(dir, paths);
+        QCOMPARE(run.exec({"apply"}), 0);
+        write(paths.themeName, "b\n");
+        write(paths.stateTheme + "/keyboard.rgb", "#222222\n");
+        run.log.now += 1000;
+        run.onSleep = [&](int ms) {
+            if (ms > Device::PacketGapMs) {
+                write(paths.themeName, "c\n");
+                write(paths.stateTheme + "/keyboard.rgb", "#333333\n");
+            }
+        };
+        run.log.packets.clear();
+        QCOMPARE(run.exec({"apply"}), 0);
+        QVERIFY(!run.log.packets.isEmpty());
+        QCOMPARE(run.log.packets.first().mid(4, 3), QByteArray::fromHex("333333"));
+    }
+
 private:
 
     // An editor on a fake theme whose sends are counted instead of reaching a keyboard.
@@ -799,7 +878,9 @@ private:
     struct CliRun {
         CliRun(const QTemporaryDir &dir, const ThemePaths &paths)
             : transport(log), binder(log),
-              device(transport, binder, dir.path(), [this](int ms) { log.sleeps << ms; }, [this] { return log.now; }),
+              device(transport, binder, dir.path(),
+                     [this](int ms) { log.sleeps << ms; log.now += ms; if (onSleep) onSleep(ms); },
+                     [this] { return log.now; }),
               outStream(&out), errStream(&err), env{paths, &device, &outStream, &errStream} {}
         int exec(const QStringList &args) {
             const int code = runCli(args, env);
@@ -808,6 +889,7 @@ private:
             return code;
         }
         FakeLog log;
+        std::function<void(int)> onSleep;
         FakeTransport transport;
         FakeBinder binder;
         Device device;

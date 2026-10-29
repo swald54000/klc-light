@@ -96,7 +96,11 @@ QList<Transition> transitions(const EffectDef &def, QString *error) {
         int delta[3] = {roundHalfEven((to[i].red() - from[i].red()) / 2.0),
                         roundHalfEven((to[i].green() - from[i].green()) / 2.0),
                         roundHalfEven((to[i].blue() - from[i].blue()) / 2.0)};
-        // Rounding each step can leave the cycle a level off; the closing transition
+        // A full swing (255 to 0) is -127.5 in two-level units, one past what a signed
+        // byte holds: limit it, which ends the step one level short.
+        for (int c = 0; c < 3; ++c)
+            delta[c] = std::clamp(delta[c], -127, 127);
+        // Rounding and limiting can leave the cycle a level off; the closing transition
         // absorbs it so the color returns exactly to the start on every loop.
         if (i == durations.size() - 1)
             for (int c = 0; c < 3; ++c)
@@ -115,6 +119,15 @@ QList<Transition> transitions(const EffectDef &def, QString *error) {
             return {};
         }
         result.append({qint8(delta[0]), qint8(delta[1]), qint8(delta[2]), quint16(durations[i])});
+    }
+    int total = 0;
+    for (int d : durations)
+        total += d;
+    // The packet stores the cycle's total duration in 16 bits too.
+    if (total > 65535) {
+        if (error)
+            *error = QString("cycle lasts %1 units, at most 65535").arg(total);
+        return {};
     }
     return result;
 }

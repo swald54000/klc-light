@@ -43,32 +43,43 @@ int runCli(const QStringList &args, CliEnv &env) {
             path = arg;
     }
 
-    std::optional<Profile> profile;
+    // Reads and builds the profile to send: the given file, or the active theme's.
     QString source;
-    QStringList errors;
-    if (!path.isEmpty()) {
-        profile = readProfile(path, &errors);
-        source = path;
-    } else {
-        const Resolved resolved = resolveProfile(env.paths);
-        profile = resolved.profile;
-        source = resolved.source;
-        errors = resolved.errors;
+    auto build = [&]() {
+        BuildResult built;
+        std::optional<Profile> profile;
+        if (!path.isEmpty()) {
+            profile = readProfile(path, &built.errors);
+            source = path;
+        } else {
+            const Resolved resolved = resolveProfile(env.paths);
+            profile = resolved.profile;
+            source = resolved.source;
+            built.errors = resolved.errors;
+        }
+        // A theme without keyboard lighting is not an error: there is just nothing to send.
+        if (built.errors.isEmpty() && profile)
+            built = buildPackets(*profile, Layout::gs76(), reactive);
+        return built;
+    };
+
+    if (check) {
+        const BuildResult built = build();
+        if (!built.errors.isEmpty())
+            return finish(env, json, false, built.errors.join("\n"), 0, source);
+        return finish(env, json, true, built.packets.isEmpty() ? QString() : QString("%1 packets OK").arg(built.packets.size()),
+                      int(built.packets.size()), source);
     }
-    if (!errors.isEmpty())
-        return finish(env, json, false, errors.join("\n"), 0, source);
-    // A theme without keyboard lighting is not an error: there is just nothing to send.
-    if (!profile)
-        return finish(env, json, true, QString(), 0, source);
 
-    const BuildResult built = buildPackets(*profile, Layout::gs76(), reactive);
-    if (!built.errors.isEmpty())
-        return finish(env, json, false, built.errors.join("\n"), 0, source);
-    if (check)
-        return finish(env, json, true, QString("%1 packets OK").arg(built.packets.size()), int(built.packets.size()), source);
-
-    const ApplyResult result = env.device->apply(built.packets);
+    // The theme is read again once it is this send's turn, so the last theme of a quick
+    // series of switches is the one that ends up on the keyboard.
+    int count = 0;
+    const ApplyResult result = env.device->applyLatest([&] {
+        BuildResult built = build();
+        count = int(built.packets.size());
+        return built;
+    });
     if (result.error != ApplyError::None)
-        return finish(env, json, false, result.message, int(built.packets.size()), source);
-    return finish(env, json, true, QString(), int(built.packets.size()), source);
+        return finish(env, json, false, result.message, count, source);
+    return finish(env, json, true, QString(), count, source);
 }
