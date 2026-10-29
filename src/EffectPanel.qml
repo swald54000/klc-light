@@ -15,7 +15,8 @@ ColumnLayout {
 
     Label { text: qsTr("EFFECT"); font.pixelSize: 11; opacity: 0.6 }
 
-    ComboBox {
+    FlatComboBox {
+        objectName: "baseTypeBox"
         Layout.fillWidth: true
         visible: panel.kind === "base"
         model: [
@@ -80,7 +81,7 @@ ColumnLayout {
         }
         RowLayout {
             Button { text: qsTr("+ Step"); onClicked: backend.addStep() }
-            ComboBox {
+            FlatComboBox {
                 Layout.fillWidth: true
                 model: ["aqua-0", "aqua-1", "aqua-2", "aqua-3", "aqua-4", "aqua-5"]
                 currentIndex: Math.max(0, model.indexOf(panel.cur.origin))

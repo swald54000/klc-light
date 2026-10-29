@@ -18,11 +18,13 @@ ApplicationWindow {
     Material.roundedScale: theme.radius
 
     property bool helpVisible: false
+    // Set once the user chose to discard unapplied changes, so closing goes through.
+    property bool discarding: false
 
     Shortcut { sequence: "?"; context: Qt.ApplicationShortcut; onActivated: win.helpVisible = !win.helpVisible }
     Shortcut { sequence: "Q"; context: Qt.ApplicationShortcut; onActivated: win.requestQuit() }
     Shortcut { sequence: "Space"; context: Qt.ApplicationShortcut; onActivated: backend.apply() }
-    Shortcut { sequence: StandardKey.Undo; context: Qt.ApplicationShortcut; onActivated: backend.undo() }
+    Shortcut { sequences: [StandardKey.Undo]; context: Qt.ApplicationShortcut; onActivated: backend.undo() }
     Shortcut { sequence: "Ctrl+Shift+Z"; context: Qt.ApplicationShortcut; onActivated: backend.redo() }
     Shortcut { sequence: "Esc"; context: Qt.ApplicationShortcut; onActivated: { win.helpVisible = false; backend.clearSelection() } }
 
@@ -34,7 +36,7 @@ ApplicationWindow {
     }
 
     onClosing: close => {
-        if (backend.dirty) {
+        if (backend.dirty && !win.discarding) {
             close.accepted = false
             quitDialog.open()
         }
@@ -178,11 +180,22 @@ ApplicationWindow {
 
     Dialog {
         id: quitDialog
+        objectName: "quitDialog"
         anchors.centerIn: parent
         modal: true
         title: qsTr("Quit without applying?")
         Label { text: qsTr("Your changes have not been applied to the keyboard or saved.") }
         standardButtons: Dialog.Discard | Dialog.Cancel
-        onDiscarded: Qt.quit()
+        // Same reason as FlatComboBox: Material's elevation effect hides the background.
+        background: Rectangle {
+            color: Material.dialogColor
+            radius: Math.min(4, theme.radius)
+            border.color: Qt.rgba(1, 1, 1, 0.12)
+        }
+        onDiscarded: {
+            win.discarding = true
+            quitDialog.close()
+            win.close()
+        }
     }
 }

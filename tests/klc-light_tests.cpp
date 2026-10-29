@@ -2,6 +2,11 @@
 #include <QFile>
 #include <QTemporaryDir>
 #include <QtTest>
+#include <QQmlApplicationEngine>
+#include <QQmlContext>
+#include <QQuickItem>
+#include <QQuickStyle>
+#include <QQuickWindow>
 
 #include "backend.h"
 #include "cli.h"
@@ -850,7 +855,45 @@ private slots:
         QCOMPARE(run.log.packets.first().mid(4, 3), QByteArray::fromHex("333333"));
     }
 
+
+    void uiBaseTypeChoicesVisible()
+    {
+        Ui ui;
+        auto *box = ui.window->findChild<QQuickItem *>("baseTypeBox");
+        QVERIFY(box && box->isVisible());
+        QCOMPARE(box->property("count").toInt(), 5);
+        QObject *popup = box->property("popup").value<QObject *>();
+        QMetaObject::invokeMethod(popup, "open");
+        QTRY_VERIFY(popup->property("opened").toBool());
+        QTest::qWait(300);
+        // The list must be drawn on an opaque background, not over the panel behind it.
+        auto *background = popup->property("background").value<QQuickItem *>();
+        const QPointF centre = background->mapToScene(QPointF(background->width() / 2, background->height() - 6));
+        const QImage image = ui.window->grabWindow();
+        image.save(qEnvironmentVariable("KLC_UI_SHOT", "/dev/null"), "PNG");
+        const QColor pixel = image.pixelColor(centre.toPoint() * image.devicePixelRatio());
+        QCOMPARE(pixel, background->property("color").value<QColor>());
+    }
+
+    void uiQuitDiscardCloses()
+    {
+        Ui ui;
+        ui.run.backend->setColor(QColor("#123456"));
+        QVERIFY(ui.run.backend->dirty());
+        QMetaObject::invokeMethod(ui.window, "requestQuit");
+        auto *dialog = ui.window->findChild<QObject *>("quitDialog");
+        QVERIFY(dialog);
+        QTRY_VERIFY(dialog->property("opened").toBool());
+        QMetaObject::invokeMethod(dialog, "discarded");
+        QTRY_VERIFY(!ui.window->isVisible());
+        // The bug reopened the dialog from the window's closing handler, forever.
+        QTest::qWait(300);
+        QVERIFY(!dialog->property("opened").toBool());
+        QVERIFY(!ui.window->isVisible());
+    }
+
 private:
+
 
     // An editor on a fake theme whose sends are counted instead of reaching a keyboard.
     struct EditorRun {
@@ -965,6 +1008,27 @@ private:
         QVERIFY(file.open(QIODevice::WriteOnly));
         file.write(contents);
     }
+
+    // The real window, offscreen, on an editor whose sends are counted.
+    struct Ui {
+        Ui() : theme(run.dir.path()), translator(langDir.path() + "/language", ":/i18n") {
+            static const bool styled = [] { QQuickStyle::setStyle("Material"); return true; }();
+            Q_UNUSED(styled);
+            engine.rootContext()->setContextProperty("translator", &translator);
+            engine.rootContext()->setContextProperty("theme", &theme);
+            engine.rootContext()->setContextProperty("backend", run.backend);
+            engine.load(QUrl("qrc:/Main.qml"));
+            window = engine.rootObjects().isEmpty() ? nullptr : qobject_cast<QQuickWindow *>(engine.rootObjects().first());
+            if (!window || !QTest::qWaitForWindowExposed(window))
+                qFatal("window did not open");
+        }
+        EditorRun run;
+        QTemporaryDir langDir;
+        Theme theme;
+        Translator translator;
+        QQmlApplicationEngine engine;
+        QQuickWindow *window = nullptr;
+    };
 };
 
 QTEST_MAIN(KlcLightTests)
