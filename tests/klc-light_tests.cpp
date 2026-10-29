@@ -6,6 +6,11 @@
 #include "backend.h"
 #include "keylabels.h"
 #include "layout.h"
+#include "profile.h"
+
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include "theme.h"
 #include "translator.h"
 
@@ -140,6 +145,83 @@ private slots:
         QCOMPARE(fr.label(*layout.byId("KEY_ESC")), QString("Esc"));
         const KeyLabels us = KeyLabels::fromRmlvo("us", "");
         QCOMPARE(us.label(*layout.byId("KEY_Q")), QString("Q"));
+    }
+
+    void profileRoundTrip()
+    {
+        const QByteArray json = R"({
+          "version": 1, "brightness": 100, "speed": 100,
+          "base": { "type": "static", "color": "#00E5FF" },
+          "keys": { "KEY_W": "#FF0000", "KEY_A": "#FF0000" },
+          "effects": [
+            { "name": "vague", "type": "wave", "keys": ["KEY_F1", "KEY_F2"],
+              "steps": [["#FF0000", 14], ["#FFAA00", 10]], "origin": "aqua-1" }
+          ],
+          "reactive": { "enabled": false, "color": "#FFFFFF", "duration": 30 }
+        })";
+        const QJsonObject source = QJsonDocument::fromJson(json).object();
+        QStringList errors;
+        const auto profile = profileFromJson(source, &errors);
+        QVERIFY2(profile, qPrintable(errors.join("; ")));
+        QVERIFY(validate(*profile, Layout::gs76()).isEmpty());
+        QCOMPARE(toJson(*profile), source);
+        QCOMPARE(profile->effects.first().start, QColor("#FF0000"));
+    }
+
+    void profileRejects_data()
+    {
+        QTest::addColumn<QString>("patch");
+        QTest::addColumn<QString>("expected");
+        QTest::newRow("unknown key") << R"({"keys": {"KEY_NOPE": "#FF0000"}})" << "KEY_NOPE";
+        QTest::newRow("version") << R"({"version": 2})" << "version";
+        QTest::newRow("bad color") << R"({"keys": {"KEY_Q": "#12345"}})" << "#12345";
+        QTest::newRow("brightness") << R"({"brightness": 0})" << "brightness";
+        QTest::newRow("speed") << R"({"speed": 500})" << "speed";
+        QTest::newRow("missing base") << R"({"base": null})" << "base";
+        QTest::newRow("too many steps") << "STEPS17" << "16";
+        QTest::newRow("too many effects") << "EFFECTS7" << "6";
+        QTest::newRow("key in two effects") << "TWICE" << "KEY_F1";
+    }
+
+    void profileRejects()
+    {
+        QFETCH(QString, patch);
+        QFETCH(QString, expected);
+        QJsonObject object{
+            {"version", 1}, {"brightness", 100}, {"speed", 100},
+            {"base", QJsonObject{{"type", "static"}, {"color", "#000000"}}},
+        };
+        auto effect = [](const QString &key, int steps) {
+            QJsonArray list;
+            for (int i = 0; i < steps; ++i)
+                list.append(QJsonArray{i % 2 ? "#000000" : "#FF0000", 10});
+            return QJsonObject{{"name", "e"}, {"type", "wave"}, {"keys", QJsonArray{key}},
+                               {"steps", list}, {"origin", "aqua-1"}};
+        };
+        if (patch == "STEPS17")
+            object["effects"] = QJsonArray{effect("KEY_F1", 17)};
+        else if (patch == "EFFECTS7") {
+            QJsonArray effects;
+            for (int i = 1; i <= 7; ++i)
+                effects.append(effect(QString("KEY_F%1").arg(i), 2));
+            object["effects"] = effects;
+        } else if (patch == "TWICE")
+            object["effects"] = QJsonArray{effect("KEY_F1", 2), effect("KEY_F1", 2)};
+        else {
+            const QJsonObject extra = QJsonDocument::fromJson(patch.toUtf8()).object();
+            for (auto it = extra.begin(); it != extra.end(); ++it) {
+                if (it.value().isNull())
+                    object.remove(it.key());
+                else
+                    object[it.key()] = it.value();
+            }
+        }
+        QStringList errors;
+        const auto profile = profileFromJson(object, &errors);
+        if (profile)
+            errors += validate(*profile, Layout::gs76());
+        QVERIFY2(!errors.isEmpty(), "profile was accepted");
+        QVERIFY2(errors.join("\n").contains(expected), qPrintable(errors.join("\n")));
     }
 
 private:
