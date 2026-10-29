@@ -1,0 +1,23 @@
+pkgname=klc-light
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Per-key lighting editor for the MSI GS76 keyboard, one profile per Omarchy theme'
+arch=('x86_64')
+license=('MIT')
+depends=('qt6-base' 'qt6-declarative' 'qt6-wayland' 'hidapi' 'libxkbcommon')
+makedepends=('gcc' 'make')
+source=()
+sha256sums=()
+
+build() {
+  cd "$startdir/.."
+  ./bin/build
+}
+
+package() {
+  cd "$startdir/.."
+  install -Dm755 build/klc-light "$pkgdir/usr/bin/klc-light"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 "$startdir/klc-light.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/klc-light.svg"
+  install -Dm644 "$startdir/klc-light.desktop" "$pkgdir/usr/share/applications/klc-light.desktop"
+}

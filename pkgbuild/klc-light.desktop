@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=KLC Light
+Name[fr]=KLC Light
+Comment=Edit the keyboard lighting of the MSI GS76
+Comment[fr]=Modifier l'éclairage du clavier du MSI GS76
+Exec=klc-light
+Icon=klc-light
+Terminal=false
+Categories=Utility;Settings;
+StartupWMClass=klc-light
