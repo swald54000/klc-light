@@ -4,6 +4,7 @@
 #include <QtTest>
 
 #include "backend.h"
+#include "cli.h"
 #include "device.h"
 #include "sudobinder.h"
 #include "effects.h"
@@ -554,7 +555,83 @@ private slots:
         QVERIFY(timer.elapsed() < 1000);
     }
 
+
+    void cliCheck()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        write(paths.stateTheme + "/keyboard.effect", "tron\n");
+        CliRun run(dir, paths);
+        QCOMPARE(run.exec({"apply", "--check"}), 0);
+        QVERIFY2(run.out.contains("12 packets OK"), qPrintable(run.out));
+        QVERIFY(run.log.events.isEmpty());
+    }
+
+    void cliInvalid()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        const QString profile = dir.path() + "/bad.json";
+        write(profile, "{\"version\":1,\"base\":{\"type\":\"static\",\"color\":\"#000000\"},\"keys\":{\"KEY_NOPE\":\"#FF0000\"}}");
+        CliRun run(dir, paths);
+        QCOMPARE(run.exec({"apply", profile}), 1);
+        QVERIFY2(run.err.contains("KEY_NOPE"), qPrintable(run.err));
+        QVERIFY(run.log.events.isEmpty());
+    }
+
+    void cliNothing()
+    {
+        QTemporaryDir dir;
+        CliRun run(dir, fakeTheme(dir, "tokyo-night"));
+        QCOMPARE(run.exec({"apply"}), 0);
+        QVERIFY(run.log.events.isEmpty());
+    }
+
+    void cliSends()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tokyo-night");
+        write(paths.stateTheme + "/keyboard.rgb", "#7aa2f7\n");
+        CliRun run(dir, paths);
+        QCOMPARE(run.exec({"apply"}), 0);
+        QCOMPARE(run.log.events.count("send"), 5);
+    }
+
+    void cliJson()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        write(paths.stateTheme + "/keyboard.effect", "tron\n");
+        CliRun run(dir, paths);
+        QCOMPARE(run.exec({"apply", "--check", "--json"}), 0);
+        const QJsonObject result = QJsonDocument::fromJson(run.out.toUtf8()).object();
+        QCOMPARE(result.value("ok").toBool(), true);
+        QCOMPARE(result.value("packets").toInt(), 12);
+        QCOMPARE(result.value("source").toString(), paths.stateTheme + "/keyboard.effect");
+    }
+
 private:
+
+    // Runs the command line against a fake theme and a fake keyboard.
+    struct CliRun {
+        CliRun(const QTemporaryDir &dir, const ThemePaths &paths)
+            : transport(log), binder(log),
+              device(transport, binder, dir.path(), [this](int ms) { log.sleeps << ms; }, [this] { return log.now; }),
+              outStream(&out), errStream(&err), env{paths, &device, &outStream, &errStream} {}
+        int exec(const QStringList &args) {
+            const int code = runCli(args, env);
+            outStream.flush();
+            errStream.flush();
+            return code;
+        }
+        FakeLog log;
+        FakeTransport transport;
+        FakeBinder binder;
+        Device device;
+        QString out, err;
+        QTextStream outStream, errStream;
+        CliEnv env;
+    };
     static Device fakeDevice(Transport &transport, Binder &binder, const QTemporaryDir &dir, FakeLog &log)
     {
         return Device(transport, binder, dir.path(), [&log](int ms) { log.sleeps << ms; log.now += ms; },

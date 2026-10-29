@@ -5,13 +5,48 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
+#include <QDir>
 #include <QUrl>
 
+#include <QTextStream>
+#include <QStandardPaths>
+#include <QThread>
+
 #include "backend.h"
+#include "cli.h"
+#include "device.h"
+#include "hidapitransport.h"
+#include "sudobinder.h"
 #include "theme.h"
 #include "translator.h"
 
+namespace {
+
+// `apply` runs from theme hooks with no window, so it needs no display.
+int runCommand(int argc, char *argv[]) {
+    qputenv("QT_QPA_PLATFORM", "offscreen");
+    QGuiApplication app(argc, argv);
+    QStringList args = app.arguments().mid(1);
+
+    HidapiTransport transport;
+    SudoBinder binder;
+    QString runtime = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+    if (runtime.isEmpty())
+        runtime = QDir::tempPath();
+    Device device(transport, binder, runtime, [](int ms) { QThread::msleep(ms); });
+
+    QTextStream out(stdout), err(stderr);
+    CliEnv env{ThemePaths::standard(), &device, &out, &err};
+    return runCli(args, env);
+}
+
+} // namespace
+
 int main(int argc, char *argv[]) {
+    const QString command = argc > 1 ? QString::fromLocal8Bit(argv[1]) : QString();
+    if (!command.isEmpty() && command != "open")
+        return runCommand(argc, argv);
+
     QGuiApplication app(argc, argv);
     app.setApplicationName("klc-light");
     app.setApplicationVersion("0.1.0");
