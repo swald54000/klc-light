@@ -79,7 +79,10 @@ int runCli(const QStringList &args, CliEnv &env) {
         count = int(built.packets.size());
         return built;
     });
-    if (result.error != ApplyError::None)
-        return finish(env, json, false, result.message, count, source);
+    if (result.error != ApplyError::None) {
+        finish(env, json, false, result.message, count, source);
+        // A distinct status lets the theme hooks tell the user to power off.
+        return result.error == ApplyError::KeyboardAbsent ? 2 : 1;
+    }
     return finish(env, json, true, QString(), count, source);
 }

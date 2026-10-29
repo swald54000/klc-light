@@ -73,5 +73,6 @@
  "Pulse %1": "Pulsation %1",
  "Reactive": "Réactif",
  "Wave %1": "Vague %1",
- "The theme changed to %1. Your changes still belong to %2; apply or undo them, then reopen.": "Le thème est passé à %1. Vos modifications concernent toujours %2 : appliquez-les ou annulez-les, puis rouvrez l'éditeur."
+ "The theme changed to %1. Your changes still belong to %2; apply or undo them, then reopen.": "Le thème est passé à %1. Vos modifications concernent toujours %2 : appliquez-les ou annulez-les, puis rouvrez l'éditeur.",
+ "The keyboard's lighting controller is not on the USB bus (error -71 after a restart). Shut the computer down completely, then start it again: a restart is not enough.": "Le contrôleur d'éclairage du clavier n'est pas sur le bus USB (erreur -71 après un redémarrage). Éteignez complètement l'ordinateur, puis rallumez-le : un redémarrage ne suffit pas."
 }

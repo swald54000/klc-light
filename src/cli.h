@@ -15,5 +15,6 @@ struct CliEnv {
 };
 
 // `klc-light apply [profile.json] [--check] [--json] [--experimental-reactive]`.
-// Exit 0 on success or when there is nothing to apply, 1 on any error.
+// Exit 0 on success or when there is nothing to apply, 2 when the keyboard's controller is
+// missing from the USB bus, 1 on any other error.
 int runCli(const QStringList &args, CliEnv &env);

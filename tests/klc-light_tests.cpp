@@ -63,11 +63,12 @@ public:
     bool bind(QString *error) override {
         m_log.events << "bind";
         if (!bindOk)
-            *error = "sudo: a password is required";
+            *error = bindError;
         return bindOk;
     }
     bool unbind(QString *) override { m_log.events << "unbind"; return true; }
     bool bindOk = true;
+    QString bindError = "sudo: a password is required";
 
 private:
     FakeLog &m_log;
@@ -890,6 +891,35 @@ private slots:
         QTest::qWait(300);
         QVERIFY(!dialog->property("opened").toBool());
         QVERIFY(!ui.window->isVisible());
+    }
+
+
+    void deviceKeyboardAbsent()
+    {
+        QTemporaryDir dir;
+        FakeLog log;
+        FakeTransport transport(log);
+        FakeBinder binder(log);
+        binder.bindOk = false;
+        binder.bindError = "SteelSeries KLC (1038:113a) not found";
+        Device device = fakeDevice(transport, binder, dir, log);
+        const ApplyResult result = device.apply(buildPackets(Profile(), Layout::gs76()).packets);
+        QCOMPARE(int(result.error), int(ApplyError::KeyboardAbsent));
+        QVERIFY(result.message.contains("-71"));
+        QVERIFY(result.message.contains("Shut the computer down completely"));
+        QVERIFY(!log.events.contains("open"));
+    }
+
+    void cliKeyboardAbsentExitCode()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tokyo-night");
+        write(paths.stateTheme + "/keyboard.rgb", "#7aa2f7\n");
+        CliRun run(dir, paths);
+        run.binder.bindOk = false;
+        run.binder.bindError = "SteelSeries KLC (1038:113a) not found";
+        QCOMPARE(run.exec({"apply"}), 2);
+        QVERIFY(run.err.contains("-71"));
     }
 
 private:

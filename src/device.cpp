@@ -52,6 +52,11 @@ ApplyResult Device::applyLatest(const std::function<BuildResult()> &build) {
         // keyboard is not bound, and keeps it from being left attached.
         QString unbindError;
         m_binder.unbind(&unbindError);
+        // msi-kbd-usb reports the controller itself missing from the bus with its USB id.
+        if (error.contains("1038:113a"))
+            return {ApplyError::KeyboardAbsent,
+                    QCoreApplication::translate("Device", "The keyboard's lighting controller is not on the USB bus (error -71 after a restart). "
+                                                          "Shut the computer down completely, then start it again: a restart is not enough.")};
         const bool missing = error.contains("not found") || error.contains("missing");
         return {missing ? ApplyError::BinderMissing : ApplyError::BindFailed,
                 QCoreApplication::translate("Device", "Could not attach the keyboard: %1").arg(error)};

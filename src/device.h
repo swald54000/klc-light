@@ -28,7 +28,9 @@ public:
     virtual bool unbind(QString *error) = 0;
 };
 
-enum class ApplyError { None, Locked, Invalid, BinderMissing, BindFailed, DeviceMissing, SendFailed };
+// KeyboardAbsent: the lighting controller is not on the USB bus at all. On this laptop that
+// happens after a warm restart (USB error -71) and only a full power-off clears it.
+enum class ApplyError { None, Locked, Invalid, BinderMissing, BindFailed, KeyboardAbsent, DeviceMissing, SendFailed };
 
 struct ApplyResult {
     ApplyError error = ApplyError::None;
