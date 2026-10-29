@@ -64,7 +64,26 @@ int main(int argc, char *argv[]) {
     app.installTranslator(&translator);
 
     Theme theme;
-    Backend backend;
+
+    // KLC_LIGHT_FAKE_DEVICE=1 prints the packets instead of sending them, for trying the
+    // editor without touching the keyboard.
+    HidapiTransport transport;
+    SudoBinder binder;
+    QString runtime = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+    if (runtime.isEmpty())
+        runtime = QDir::tempPath();
+    Device device(transport, binder, runtime, [](int ms) { QThread::msleep(ms); });
+    const bool fake = qEnvironmentVariableIntValue("KLC_LIGHT_FAKE_DEVICE") == 1;
+    Backend::Sender sender = [&device, fake](const QList<Packet> &packets) {
+        if (!fake)
+            return device.apply(packets);
+        QTextStream err(stderr);
+        for (const Packet &packet : packets)
+            err << (packet.kind == Packet::Feature ? "F " : "O ") << packet.data.toHex() << "\n";
+        return ApplyResult{};
+    };
+    Backend backend(ThemePaths::standard(), KeyLabels::current(), sender,
+                    QDir::homePath() + "/.config/klc-light/colors.json");
 
     QQmlApplicationEngine engine;
     QObject::connect(&translator, &Translator::changed, &engine, &QQmlEngine::retranslate);

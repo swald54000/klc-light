@@ -21,6 +21,10 @@ QString symbolLabel(xkb_keysym_t sym) {
         {XKB_KEY_Left, "←"}, {XKB_KEY_Right, "→"}, {XKB_KEY_Delete, "Del"}, {XKB_KEY_Insert, "Ins"},
         {XKB_KEY_Home, "Home"}, {XKB_KEY_End, "End"}, {XKB_KEY_Prior, "PgUp"}, {XKB_KEY_Next, "PgDn"},
         {XKB_KEY_Print, "PrtSc"}, {XKB_KEY_Num_Lock, "Num"}, {XKB_KEY_Menu, "Menu"},
+        {XKB_KEY_Scroll_Lock, "ScrLk"}, {XKB_KEY_Pause, "Pause"}, {XKB_KEY_XF86Fn, "Fn"},
+        // Dead keys print nothing on their own; show the accent they add.
+        {XKB_KEY_dead_circumflex, "^"}, {XKB_KEY_dead_diaeresis, "¨"}, {XKB_KEY_dead_grave, "`"},
+        {XKB_KEY_dead_acute, "´"}, {XKB_KEY_dead_tilde, "~"},
     };
     if (sym >= XKB_KEY_F1 && sym <= XKB_KEY_F12)
         return QString("F%1").arg(sym - XKB_KEY_F1 + 1);
@@ -73,11 +77,16 @@ KeyLabels KeyLabels::fromRmlvo(const QString &layout, const QString &variant) {
                 continue;
             // xkbcommon numbers keys as evdev code + 8, the X11 convention.
             const xkb_keycode_t keycode = xkb_keycode_t(code + 8);
-            const xkb_keysym_t sym = xkb_state_key_get_one_sym(state, keycode);
+            xkb_keysym_t sym = xkb_state_key_get_one_sym(state, keycode);
+            // The keypad shows its Num Lock level (digits), as printed on the keys.
+            const xkb_keysym_t *levelSyms = nullptr;
+            if (sym >= XKB_KEY_KP_Space && sym <= XKB_KEY_KP_9
+                && xkb_keymap_key_get_syms_by_level(keymap, keycode, 0, 1, &levelSyms) > 0)
+                sym = levelSyms[0];
             QString label = symbolLabel(sym);
             if (label.isNull()) {
                 char utf8[16] = {};
-                xkb_state_key_get_utf8(state, keycode, utf8, sizeof utf8);
+                xkb_keysym_to_utf8(sym, utf8, sizeof utf8);
                 label = QString::fromUtf8(utf8).toUpper();
             }
             if (label.isNull() || (label.isEmpty() && sym != XKB_KEY_space)) {

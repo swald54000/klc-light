@@ -71,13 +71,6 @@ class KlcLightTests : public QObject {
     Q_OBJECT
 
 private slots:
-    void primaryActionCounts()
-    {
-        Backend backend;
-        backend.primaryAction();
-        QCOMPARE(backend.count(), 1);
-    }
-
     void themeFallsBack()
     {
         QTemporaryDir dir;
@@ -196,6 +189,11 @@ private slots:
         QCOMPARE(fr.label(*layout.byId("KEY_Q")), QString("A"));
         QCOMPARE(fr.label(*layout.byId("KEY_W")), QString("Z"));
         QCOMPARE(fr.label(*layout.byId("KEY_ESC")), QString("Esc"));
+        QCOMPARE(fr.label(*layout.byId("KEY_LEFTBRACE")), QString("^"));
+        QCOMPARE(fr.label(*layout.byId("KEY_SCROLLLOCK")), QString("ScrLk"));
+        QCOMPARE(fr.label(*layout.byId("KEY_FN")), QString("Fn"));
+        QCOMPARE(fr.label(*layout.byId("KEY_KP7")), QString("7"));
+        QCOMPARE(fr.label(*layout.byId("KEY_KPDOT")), QString("."));
         const KeyLabels us = KeyLabels::fromRmlvo("us", "");
         QCOMPARE(us.label(*layout.byId("KEY_Q")), QString("Q"));
     }
@@ -660,7 +658,142 @@ private slots:
             QCOMPARE(preview.colorAt("KEY_P", t + delay), preview.colorAt("KEY_Q", t));
     }
 
+
+    void backendSelectGroup()
+    {
+        EditorRun run;
+        run.backend->selectGroup("wasd");
+        QCOMPARE(run.backend->selection(), QStringList({"KEY_W", "KEY_A", "KEY_S", "KEY_D"}));
+        run.backend->select({"KEY_Q"}, true);
+        QCOMPARE(run.backend->selection().size(), 5);
+        run.backend->select({"KEY_Q"}, false);
+        QCOMPARE(run.backend->selection(), QStringList{"KEY_Q"});
+    }
+
+    void backendPaint()
+    {
+        EditorRun run;
+        QVERIFY(!run.backend->dirty());
+        run.backend->setCurrentLayer(1);
+        run.backend->select({"KEY_Q"}, false);
+        run.backend->setColor(QColor("#FF0000"));
+        QCOMPARE(run.backend->profile().keys.value("KEY_Q"), QColor("#FF0000"));
+        QVERIFY(run.backend->dirty());
+        QCOMPARE(run.backend->previewColor("KEY_Q", 0), QColor("#FF0000"));
+    }
+
+    void backendApplySaves()
+    {
+        EditorRun run;
+        run.backend->setCurrentLayer(0);
+        run.backend->setColor(QColor("#123456"));
+        run.backend->apply();
+        QTRY_COMPARE(run.sent, 1);
+        QTRY_VERIFY(!run.backend->busy());
+        QVERIFY(!run.backend->dirty());
+        QVERIFY(run.backend->error().isEmpty());
+        QFile file(run.paths.userThemes + "/tokyo-night/keyboard.klc.json");
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QVERIFY(file.readAll().contains("#123456"));
+        QVERIFY(run.backend->cooldownMs() > 0);
+    }
+
+    void backendApplyInvalid()
+    {
+        EditorRun run;
+        for (int i = 1; i <= 7; ++i) {
+            run.backend->select({QString("KEY_F%1").arg(i)}, false);
+            run.backend->addEffect("pulse");
+        }
+        run.backend->apply();
+        QVERIFY(run.backend->error().contains("6"));
+        QTest::qWait(50);
+        QCOMPARE(run.sent, 0);
+        QVERIFY(!QFile::exists(run.paths.userThemes + "/tokyo-night/keyboard.klc.json"));
+    }
+
+    void backendUndo()
+    {
+        EditorRun run;
+        run.backend->setCurrentLayer(1);
+        run.backend->select({"KEY_Q"}, false);
+        run.backend->setColor(QColor("#FF0000"));
+        run.backend->setColor(QColor("#00FF00"));
+        run.backend->undo();
+        QCOMPARE(run.backend->profile().keys.value("KEY_Q"), QColor("#FF0000"));
+        run.backend->undo();
+        QVERIFY(!run.backend->profile().keys.contains("KEY_Q"));
+        run.backend->redo();
+        QCOMPARE(run.backend->profile().keys.value("KEY_Q"), QColor("#FF0000"));
+    }
+
+    void backendEffectLayer()
+    {
+        EditorRun run;
+        run.backend->selectGroup("function");
+        run.backend->addEffect("wave");
+        QCOMPARE(run.backend->profile().effects.size(), 1);
+        QCOMPARE(run.backend->profile().effects.first().keys.size(), 12);
+        QCOMPARE(run.backend->currentLayer(), 2);
+        run.backend->setStepColor(0, QColor("#ABCDEF"));
+        QCOMPARE(run.backend->profile().effects.first().steps.first().color, QColor("#ABCDEF"));
+        run.backend->removeLayer(2);
+        QVERIFY(run.backend->profile().effects.isEmpty());
+    }
+
+
+    void backendKeysDoNotOverlap()
+    {
+        EditorRun run;
+        const QVariantList keys = run.backend->keys();
+        QCOMPARE(keys.size(), 101);
+        for (const QVariant &key : keys)
+            QVERIFY(key.toMap()["right"].toDouble() > key.toMap()["left"].toDouble());
+        for (int i = 0; i < keys.size(); ++i)
+            for (int j = i + 1; j < keys.size(); ++j) {
+                const QVariantMap a = keys[i].toMap(), b = keys[j].toMap();
+                if (a["y"].toDouble() != b["y"].toDouble())
+                    continue;
+                const bool overlap = a["left"].toDouble() < b["right"].toDouble() && b["left"].toDouble() < a["right"].toDouble();
+                QVERIFY2(!overlap, qPrintable(a["id"].toString() + " overlaps " + b["id"].toString()));
+            }
+    }
+
+
+    void frenchCatalogCoversDeviceMessages()
+    {
+        QTemporaryDir dir;
+        write(dir.path() + "/language", "fr\n");
+        Translator translator(dir.path() + "/language", ":/i18n");
+        QCOMPARE(translator.translate("Device", "Could not attach the keyboard: %1"), QString("Impossible d'attacher le clavier : %1"));
+        QVERIFY(!translator.translate("Device", "The keyboard did not appear after attaching it (USB error -71 is likely). "
+                                                "Power-cycle its USB port or shut the computer down completely.").isNull());
+        QCOMPARE(translator.translate("Main", "%n key(s) selected", nullptr, 3), QString("%n touches sélectionnées"));
+    }
+
 private:
+
+    // An editor on a fake theme whose sends are counted instead of reaching a keyboard.
+    struct EditorRun {
+        EditorRun() {
+            paths.stateTheme = dir.path() + "/state/current/theme";
+            paths.themeName = dir.path() + "/state/current/theme.name";
+            paths.userThemes = dir.path() + "/config/themes";
+            QDir().mkpath(paths.stateTheme);
+            QFile name(paths.themeName);
+            name.open(QIODevice::WriteOnly);
+            name.write("tokyo-night\n");
+            name.close();
+            backend = new Backend(paths, KeyLabels::fromRmlvo("fr", ""),
+                                  [this](const QList<Packet> &) { ++sent; return ApplyResult{}; },
+                                  dir.path() + "/colors.json");
+        }
+        ~EditorRun() { delete backend; }
+        QTemporaryDir dir;
+        ThemePaths paths;
+        std::atomic<int> sent{0};
+        Backend *backend = nullptr;
+    };
 
     // Runs the command line against a fake theme and a fake keyboard.
     struct CliRun {
