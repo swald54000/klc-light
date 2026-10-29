@@ -74,5 +74,10 @@
  "Reactive": "Réactif",
  "Wave %1": "Vague %1",
  "The theme changed to %1. Your changes still belong to %2; apply or undo them, then reopen.": "Le thème est passé à %1. Vos modifications concernent toujours %2 : appliquez-les ou annulez-les, puis rouvrez l'éditeur.",
- "The keyboard's lighting controller is not on the USB bus (error -71 after a restart). Shut the computer down completely, then start it again: a restart is not enough.": "Le contrôleur d'éclairage du clavier n'est pas sur le bus USB (erreur -71 après un redémarrage). Éteignez complètement l'ordinateur, puis rallumez-le : un redémarrage ne suffit pas."
+ "The keyboard's lighting controller is not on the USB bus (error -71 after a restart). Shut the computer down completely, then start it again: a restart is not enough.": "Le contrôleur d'éclairage du clavier n'est pas sur le bus USB (erreur -71 après un redémarrage). Éteignez complètement l'ordinateur, puis rallumez-le : un redémarrage ne suffit pas.",
+ "%n effect layer(s) removed so the effect shows on the whole keyboard (Ctrl+Z to undo).": {
+  "one": "%n calque d'effet retiré pour que l'effet s'applique à tout le clavier (Ctrl+Z pour annuler).",
+  "many": "%n calques d'effet retirés pour que l'effet s'applique à tout le clavier (Ctrl+Z pour annuler).",
+  "other": "%n calques d'effet retirés pour que l'effet s'applique à tout le clavier (Ctrl+Z pour annuler)."
+ }
 }

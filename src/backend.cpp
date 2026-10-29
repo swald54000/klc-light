@@ -238,13 +238,26 @@ void Backend::setColor(const QColor &color) {
 }
 
 void Backend::setBaseType(const QString &type) {
+    // As in Mystic Light, an effect picked here lights the whole keyboard: effect layers
+    // would otherwise hide it on every key they cover. Ctrl+Z brings them back.
+    const int removed = type == "static" ? 0 : int(m_profile.effects.size());
     edit([&](Profile &p) {
         p.base.type = type;
         if (type == "wave" && p.base.steps.isEmpty()) {
             p.base.steps = defaultSteps("wave");
             p.base.origin = "aqua-1";
         }
+        // A black base would make breathing and flashing invisible.
+        if (p.base.color == QColor(Qt::black) && type != "static")
+            p.base.color = QColor("#00E5FF");
+        if (removed > 0)
+            p.effects.clear();
     });
+    if (removed > 0) {
+        setCurrentLayer(0);
+        m_notice = tr("%n effect layer(s) removed so the effect shows on the whole keyboard (Ctrl+Z to undo).", "", removed);
+        emit errorChanged();
+    }
 }
 
 void Backend::addEffect(const QString &type) {

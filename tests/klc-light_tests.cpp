@@ -922,12 +922,29 @@ private slots:
         QVERIFY(run.err.contains("-71"));
     }
 
+
+    void backendBaseEffectShowsOnWholeKeyboard()
+    {
+        // With the tron theme's ares profile, effect layers cover almost every key, so a
+        // base effect has to replace them to be seen at all, as in Mystic Light.
+        EditorRun run("ares");
+        QCOMPARE(run.backend->profile().effects.size(), 6);
+        run.backend->setCurrentLayer(0);
+        run.backend->setBaseType("rainbow");
+        QVERIFY(run.backend->profile().effects.isEmpty());
+        QVERIFY(run.backend->notice().contains("6"));
+        QVERIFY(run.backend->previewColor("KEY_Q", 0) != run.backend->previewColor("KEY_Q", 900));
+        run.backend->undo();
+        QCOMPARE(run.backend->profile().effects.size(), 6);
+        QCOMPARE(run.backend->profile().base.type, QString("static"));
+    }
+
 private:
 
 
     // An editor on a fake theme whose sends are counted instead of reaching a keyboard.
     struct EditorRun {
-        EditorRun() {
+        explicit EditorRun(const QByteArray &effect = {}) {
             paths.stateTheme = dir.path() + "/state/current/theme";
             paths.themeName = dir.path() + "/state/current/theme.name";
             paths.userThemes = dir.path() + "/config/themes";
@@ -936,6 +953,11 @@ private:
             name.open(QIODevice::WriteOnly);
             name.write("tokyo-night\n");
             name.close();
+            if (!effect.isEmpty()) {
+                QFile file(paths.stateTheme + "/keyboard.effect");
+                file.open(QIODevice::WriteOnly);
+                file.write(effect + "\n");
+            }
             backend = new Backend(paths, KeyLabels::fromRmlvo("fr", ""),
                                   [this](const QList<Packet> &) { ++sent; return ApplyResult{}; },
                                   dir.path() + "/colors.json");
