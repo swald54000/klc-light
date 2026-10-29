@@ -4,6 +4,8 @@
 #include <QtTest>
 
 #include "backend.h"
+#include "device.h"
+#include "sudobinder.h"
 #include "effects.h"
 #include "keylabels.h"
 #include "layout.h"
@@ -16,6 +18,52 @@
 #include <QJsonObject>
 #include "theme.h"
 #include "translator.h"
+
+
+// Records what the device code does instead of touching hardware.
+struct FakeLog {
+    QStringList events;
+    qint64 now = 1'000'000;
+    QList<int> sleeps;
+};
+
+class FakeTransport : public Transport {
+public:
+    explicit FakeTransport(FakeLog &log) : m_log(log) {}
+    bool waitAndOpen(int) override { m_log.events << "open"; return openOk; }
+    bool sendFeature(const QByteArray &) override { return send(); }
+    bool sendOutput(const QByteArray &) override { return send(); }
+    void close() override { m_log.events << "close"; }
+    QString lastError() const override { return "fake error"; }
+    bool openOk = true;
+    int failAt = -1;
+    int sent = 0;
+
+
+private:
+
+    bool send() {
+        m_log.events << "send";
+        return ++sent != failAt;
+    }
+    FakeLog &m_log;
+};
+
+class FakeBinder : public Binder {
+public:
+    explicit FakeBinder(FakeLog &log) : m_log(log) {}
+    bool bind(QString *error) override {
+        m_log.events << "bind";
+        if (!bindOk)
+            *error = "sudo: a password is required";
+        return bindOk;
+    }
+    bool unbind(QString *) override { m_log.events << "unbind"; return true; }
+    bool bindOk = true;
+
+private:
+    FakeLog &m_log;
+};
 
 class KlcLightTests : public QObject {
     Q_OBJECT
@@ -423,7 +471,95 @@ private slots:
         QVERIFY(file.readAll().contains("#ABCDEF"));
     }
 
+    void deviceOrder()
+    {
+        QTemporaryDir dir;
+        FakeLog log;
+        FakeTransport transport(log);
+        FakeBinder binder(log);
+        Device device = fakeDevice(transport, binder, dir, log);
+        const ApplyResult result = device.apply(buildPackets(builtinProfile("tron"), Layout::gs76()).packets);
+        QCOMPARE(int(result.error), int(ApplyError::None));
+        QStringList expected{"bind", "open"};
+        for (int i = 0; i < 12; ++i)
+            expected << "send";
+        expected << "close" << "unbind";
+        QCOMPARE(log.events, expected);
+    }
+
+    void deviceUnbindOnSendFailure()
+    {
+        QTemporaryDir dir;
+        FakeLog log;
+        FakeTransport transport(log);
+        transport.failAt = 3;
+        FakeBinder binder(log);
+        Device device = fakeDevice(transport, binder, dir, log);
+        const ApplyResult result = device.apply(buildPackets(builtinProfile("tron"), Layout::gs76()).packets);
+        QCOMPARE(int(result.error), int(ApplyError::SendFailed));
+        QCOMPARE(log.events.count("send"), 3);
+        QCOMPARE(log.events.last(), QString("unbind"));
+    }
+
+    void deviceMissing()
+    {
+        QTemporaryDir dir;
+        FakeLog log;
+        FakeTransport transport(log);
+        transport.openOk = false;
+        FakeBinder binder(log);
+        Device device = fakeDevice(transport, binder, dir, log);
+        const ApplyResult result = device.apply(buildPackets(Profile(), Layout::gs76()).packets);
+        QCOMPARE(int(result.error), int(ApplyError::DeviceMissing));
+        QVERIFY(result.message.contains("-71"));
+        QCOMPARE(log.events.count("send"), 0);
+        QCOMPARE(log.events.last(), QString("unbind"));
+    }
+
+    void deviceWaitsInterval()
+    {
+        QTemporaryDir dir;
+        FakeLog log;
+        FakeTransport transport(log);
+        FakeBinder binder(log);
+        Device device = fakeDevice(transport, binder, dir, log);
+        const QList<Packet> packets = buildPackets(Profile(), Layout::gs76()).packets;
+        QCOMPARE(int(device.apply(packets).error), int(ApplyError::None));
+        QVERIFY(log.sleeps.isEmpty());
+        log.now += 1000;
+        QCOMPARE(int(device.apply(packets).error), int(ApplyError::None));
+        QCOMPARE(log.sleeps, QList<int>{4000});
+        QCOMPARE(log.events.count("bind"), 2);
+    }
+
+    void deviceSudoFastFail()
+    {
+        QTemporaryDir dir;
+        FakeLog log;
+        FakeTransport transport(log);
+        FakeBinder binder(log);
+        binder.bindOk = false;
+        Device device = fakeDevice(transport, binder, dir, log);
+        const ApplyResult result = device.apply(buildPackets(Profile(), Layout::gs76()).packets);
+        QCOMPARE(int(result.error), int(ApplyError::BindFailed));
+        QVERIFY(!log.events.contains("open"));
+        QVERIFY(log.sleeps.isEmpty());
+
+        QElapsedTimer timer;
+        timer.start();
+        SudoBinder missing("/nonexistent/msi-kbd-usb");
+        QString error;
+        QVERIFY(!missing.bind(&error));
+        QVERIFY(error.contains("msi-kbd-usb"));
+        QVERIFY(timer.elapsed() < 1000);
+    }
+
 private:
+    static Device fakeDevice(Transport &transport, Binder &binder, const QTemporaryDir &dir, FakeLog &log)
+    {
+        return Device(transport, binder, dir.path(), [&log](int ms) { log.sleeps << ms; log.now += ms; },
+                      [&log] { return log.now; });
+    }
 
     static ThemePaths fakeTheme(const QTemporaryDir &dir, const QString &name)
     {
