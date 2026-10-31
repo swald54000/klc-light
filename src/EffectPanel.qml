@@ -102,7 +102,12 @@ GridLayout {
                         ToolTip.text: qsTr("Step duration")
                         ToolTip.visible: hovered
                     }
-                    ToolButton { text: "×"; onClicked: backend.removeStep(row.index) }
+                    ToolButton {
+                        text: "×"
+                        onClicked: backend.removeStep(row.index)
+                        ToolTip.text: qsTr("Remove this step")
+                        ToolTip.visible: hovered
+                    }
                 }
             }
             RowLayout {

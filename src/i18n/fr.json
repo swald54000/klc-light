@@ -12,7 +12,6 @@
  "Breathing": "Respiration",
  "Brightness: %1 %": "Luminosité : %1 %",
  "Clear the selection": "Vider la sélection",
- "Click selects a key, Ctrl+click adds, drag selects a rectangle. Nothing reaches the keyboard until Apply.": "Clic : une touche, Ctrl+clic : ajouter, glisser : rectangle. Rien n'est envoyé au clavier avant « Appliquer ».",
  "Click to use, right-click to store the current color": "Clic pour utiliser, clic droit pour enregistrer la couleur actuelle",
  "COLOR": "COULEUR",
  "Digits": "Chiffres",
@@ -80,5 +79,15 @@
   "other": "%n calques d'effet retirés pour que l'effet s'applique à tout le clavier (Ctrl+Z pour annuler)."
  },
  "Step duration": "Durée de l'étape",
- "Select keys first to add an effect.": "Sélectionnez d'abord des touches pour ajouter un effet."
+ "Select keys first to add an effect.": "Sélectionnez d'abord des touches pour ajouter un effet.",
+ "Click, Ctrl+click, drag · ? for help": "Clic, Ctrl+clic, glisser · ? pour l'aide",
+ "Dismiss": "Fermer",
+ "Remove this step": "Supprimer cette étape",
+ "Click": "Clic",
+ "Select a key": "Sélectionner une touche",
+ "Ctrl+click": "Ctrl+clic",
+ "Add a key to the selection": "Ajouter une touche à la sélection",
+ "Drag": "Glisser",
+ "Select a rectangle of keys": "Sélectionner un rectangle de touches",
+ "Apply to the keyboard (nothing is sent before)": "Appliquer au clavier (rien n'est envoyé avant)"
 }

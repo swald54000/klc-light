@@ -8,6 +8,9 @@ ApplicationWindow {
     width: 1280
     height: 640
     minimumWidth: 900
+    // Last group button used, and the selection it made (JSON), to show it as active.
+    property string activeGroup: ""
+    property string groupSelection: ""
     minimumHeight: 480
     visible: true
     title: "KLC Light"
@@ -66,7 +69,12 @@ ApplicationWindow {
                         wrapMode: Text.WordWrap
                         text: backend.error !== "" ? backend.error : backend.notice
                     }
-                    ToolButton { text: "×"; onClicked: backend.dismissError() }
+                    ToolButton {
+                        text: "×"
+                        onClicked: backend.dismissError()
+                        ToolTip.text: qsTr("Dismiss")
+                        ToolTip.visible: hovered
+                    }
                 }
             }
 
@@ -91,11 +99,20 @@ ApplicationWindow {
                         { group: "modifiers", text: qsTr("Modifiers") },
                         { group: "all", text: qsTr("All") }
                     ]
+                    // Real buttons (they read as plain text when flat); the group whose keys are
+                    // exactly the current selection shows as active.
                     delegate: Button {
                         required property var modelData
-                        flat: true
                         text: modelData.text
-                        onClicked: backend.selectGroup(modelData.group)
+                        highlighted: win.activeGroup === modelData.group
+                                     && JSON.stringify(backend.selection) === win.groupSelection
+                        Material.elevation: 0
+                        Material.roundedScale: theme.radius
+                        onClicked: {
+                            backend.selectGroup(modelData.group)
+                            win.activeGroup = modelData.group
+                            win.groupSelection = JSON.stringify(backend.selection)
+                        }
                     }
                 }
                 Label {
@@ -103,7 +120,7 @@ ApplicationWindow {
                     wrapMode: Text.WordWrap
                     font.pixelSize: 11
                     opacity: 0.5
-                    text: qsTr("Click selects a key, Ctrl+click adds, drag selects a rectangle. Nothing reaches the keyboard until Apply.")
+                    text: qsTr("Click, Ctrl+click, drag · ? for help")
                 }
             }
 
@@ -185,7 +202,10 @@ ApplicationWindow {
                     columnSpacing: 24
                     Repeater {
                         model: [
-                            ["Space", qsTr("Apply to the keyboard")],
+                            [qsTr("Click"), qsTr("Select a key")],
+                            [qsTr("Ctrl+click"), qsTr("Add a key to the selection")],
+                            [qsTr("Drag"), qsTr("Select a rectangle of keys")],
+                            ["Space", qsTr("Apply to the keyboard (nothing is sent before)")],
                             ["Ctrl+Z", qsTr("Undo")],
                             ["Ctrl+Shift+Z", qsTr("Redo")],
                             ["Esc", qsTr("Clear the selection")],

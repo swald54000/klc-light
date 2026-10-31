@@ -94,6 +94,14 @@ Item {
                 border.color: key.selected ? "white" : Qt.rgba(0, 0, 0, 0.6)
             }
 
+            // A light veil so the selection also stands out on brightly lit keys.
+            Rectangle {
+                anchors.fill: parent
+                radius: cap.radius
+                visible: key.selected
+                color: Qt.rgba(1, 1, 1, 0.14)
+            }
+
             // The legend, lit from below in the key's color.
             Text {
                 anchors.centerIn: parent
