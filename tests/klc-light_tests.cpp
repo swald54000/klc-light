@@ -896,6 +896,124 @@ private slots:
     }
 
 
+    // Re-picking the current value is not an edit: it must not fill the undo history.
+    void backendNoOpEditKeepsHistory()
+    {
+        EditorRun run;
+        run.backend->setColor(QColor("#123456"));
+        run.backend->setColor(QColor("#123456"));
+        run.backend->undo();
+        QVERIFY(!run.backend->canUndo());
+    }
+
+    // A whole gesture (press, drag, release) is one undo step, however many values it went through.
+    void backendGestureIsOneUndoStep()
+    {
+        EditorRun run;
+        run.backend->beginGesture();
+        run.backend->setColor(QColor("#110000"));
+        run.backend->setColor(QColor("#220000"));
+        run.backend->setColor(QColor("#330000"));
+        run.backend->endGesture();
+        QVERIFY(run.backend->canUndo());
+        run.backend->undo();
+        QVERIFY(!run.backend->canUndo());
+        // After the gesture, edits are separate steps again.
+        run.backend->setColor(QColor("#440000"));
+        run.backend->setColor(QColor("#550000"));
+        run.backend->undo();
+        QVERIFY(run.backend->canUndo());
+    }
+
+    // Point of the hue ring at `degrees` (counter-clockwise from the right), in scene coordinates.
+    static QPointF ringPoint(QQuickItem *ring, double degrees)
+    {
+        const double a = qDegreesToRadians(degrees);
+        return ring->mapToScene(QPointF(75 + 63 * std::cos(a), 75 - 63 * std::sin(a)));
+    }
+
+    static double hueDistance(const QColor &a, const QColor &b)
+    {
+        const double d = std::abs(a.hsvHueF() - b.hsvHueF());
+        return std::min(d, 1.0 - d);
+    }
+
+    // The bug: the ring is drawn red, magenta, blue… counter-clockwise but read red, yellow,
+    // green…, so clicking magenta picked yellow. The picked hue must be the clicked pixel's.
+    void uiHueRingPicksTheClickedColor()
+    {
+        Ui ui;
+        auto *ring = ui.window->findChild<QQuickItem *>("hueRing");
+        QVERIFY(ring && ring->isVisible());
+        QTest::qWait(200);
+        for (const double degrees : {30.0, 90.0, 150.0, 210.0, 270.0, 330.0}) {
+            const QPointF point = ringPoint(ring, degrees);
+            const QImage image = ui.window->grabWindow();
+            const QColor pixel = image.pixelColor((point * image.devicePixelRatio()).toPoint());
+            QTest::mouseClick(ui.window, Qt::LeftButton, {}, point.toPoint());
+            const QColor picked = ring->parentItem()->property("color").value<QColor>();
+            QVERIFY2(hueDistance(pixel, picked) < 0.04,
+                     qPrintable(QString("%1°: pixel %2, picked %3").arg(degrees).arg(pixel.name(), picked.name())));
+        }
+    }
+
+    // From a black (or nearly black) color, a hue picked on the ring must show: full intensity.
+    void uiHueRingFromBlackIsVisible()
+    {
+        Ui ui;
+        auto *ring = ui.window->findChild<QQuickItem *>("hueRing");
+        QVERIFY(ring && ring->isVisible());
+        ring->parentItem()->setProperty("color", QColor("#000000"));
+        QTest::mouseClick(ui.window, Qt::LeftButton, {}, ringPoint(ring, 90).toPoint());
+        QCOMPARE(ring->parentItem()->property("color").value<QColor>().valueF(), 1.0);
+    }
+
+    void uiRingDragIsOneUndoStep()
+    {
+        Ui ui;
+        auto *ring = ui.window->findChild<QQuickItem *>("hueRing");
+        QVERIFY(ring && ring->isVisible());
+        QTest::mousePress(ui.window, Qt::LeftButton, {}, ringPoint(ring, 10).toPoint());
+        for (int degrees = 20; degrees <= 120; degrees += 10)
+            QTest::mouseMove(ui.window, ringPoint(ring, degrees).toPoint());
+        QTest::mouseRelease(ui.window, Qt::LeftButton, {}, ringPoint(ring, 120).toPoint());
+        QVERIFY(ui.run.backend->canUndo());
+        ui.run.backend->undo();
+        QVERIFY(!ui.run.backend->canUndo());
+    }
+
+    // Dragging a slider is one undo step too.
+    void uiSliderDragIsOneUndoStep()
+    {
+        Ui ui;
+        auto *slider = ui.window->findChild<QQuickItem *>("brightnessSlider");
+        QVERIFY(slider && slider->isVisible());
+        const QPointF left = slider->mapToScene(QPointF(slider->width() * 0.2, slider->height() / 2));
+        QTest::mousePress(ui.window, Qt::LeftButton, {}, left.toPoint());
+        for (double f = 0.25; f <= 0.6; f += 0.05)
+            QTest::mouseMove(ui.window, slider->mapToScene(QPointF(slider->width() * f, slider->height() / 2)).toPoint());
+        QTest::mouseRelease(ui.window, Qt::LeftButton, {},
+                            slider->mapToScene(QPointF(slider->width() * 0.6, slider->height() / 2)).toPoint());
+        QVERIFY(ui.run.backend->canUndo());
+        ui.run.backend->undo();
+        QVERIFY(!ui.run.backend->canUndo());
+    }
+
+    // Undo must be visible, not only Ctrl+Z.
+    void uiUndoRedoButtons()
+    {
+        Ui ui;
+        auto *undo = ui.window->findChild<QQuickItem *>("undoButton");
+        auto *redo = ui.window->findChild<QQuickItem *>("redoButton");
+        QVERIFY(undo && undo->isVisible() && redo && redo->isVisible());
+        QVERIFY(!undo->isEnabled());
+        ui.run.backend->setColor(QColor("#123456"));
+        QTRY_VERIFY(undo->isEnabled());
+        QMetaObject::invokeMethod(undo, "clicked");
+        QVERIFY(!ui.run.backend->canUndo());
+        QTRY_VERIFY(redo->isEnabled());
+    }
+
     void deviceKeyboardAbsent()
     {
         QTemporaryDir dir;

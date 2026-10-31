@@ -96,6 +96,9 @@ public:
     Q_INVOKABLE void setSavedColor(int index, const QColor &color);
     Q_INVOKABLE QColor previewColor(const QString &id, qint64 ms) const;
     Q_INVOKABLE void apply();
+    // Everything edited between these two calls is one undo step (press, drag, release).
+    Q_INVOKABLE void beginGesture();
+    Q_INVOKABLE void endGesture();
     Q_INVOKABLE void undo();
     Q_INVOKABLE void redo();
     Q_INVOKABLE void reloadTheme();
@@ -135,6 +138,8 @@ private:
     Profile m_profile;
     std::optional<Preview> m_preview;
     QList<Profile> m_undo, m_redo;
+    bool m_inGesture = false;       // between beginGesture() and endGesture()
+    bool m_gestureRecorded = false; // the gesture already pushed its undo step
     QStringList m_selection;
     int m_currentLayer = 0;
     int m_revision = 0;

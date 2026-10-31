@@ -109,9 +109,16 @@ void Backend::changed() {
 void Backend::edit(const std::function<void(Profile &)> &change) {
     Profile next = m_profile;
     change(next);
-    m_undo.append(m_profile);
-    if (m_undo.size() > kUndoLimit)
-        m_undo.removeFirst();
+    // Re-picking the current value is not an edit.
+    if (toJson(next) == toJson(m_profile))
+        return;
+    // A gesture records the state from before its first change, once.
+    if (!m_inGesture || !m_gestureRecorded) {
+        m_undo.append(m_profile);
+        if (m_undo.size() > kUndoLimit)
+            m_undo.removeFirst();
+        m_gestureRecorded = m_inGesture;
+    }
     m_redo.clear();
     m_profile = next;
     m_dirty = true;
@@ -411,6 +418,16 @@ void Backend::onApplyFinished(const ApplyResult &result) {
     m_cooldownMs = Device::MinIntervalMs;
     m_cooldown.start();
     emit cooldownChanged();
+}
+
+void Backend::beginGesture() {
+    m_inGesture = true;
+    m_gestureRecorded = false;
+}
+
+void Backend::endGesture() {
+    m_inGesture = false;
+    m_gestureRecorded = false;
 }
 
 void Backend::undo() {

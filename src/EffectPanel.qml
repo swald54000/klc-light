@@ -168,13 +168,16 @@ GridLayout {
             Layout.fillWidth: true
             from: 25; to: 400; stepSize: 5
             value: backend.speed
+            onPressedChanged: pressed ? backend.beginGesture() : backend.endGesture()
             onMoved: backend.speed = value
         }
         Label { text: qsTr("Brightness: %1 %").arg(backend.brightness); font.pixelSize: 11; opacity: 0.6 }
         Slider {
+            objectName: "brightnessSlider"
             Layout.fillWidth: true
             from: 1; to: 100; stepSize: 1
             value: backend.brightness
+            onPressedChanged: pressed ? backend.beginGesture() : backend.endGesture()
             onMoved: backend.brightness = value
         }
 
@@ -188,6 +191,24 @@ GridLayout {
                 text: backend.busy ? qsTr("Sending…")
                      : backend.cooldownMs > 0 ? qsTr("Ready again in %1 s").arg(Math.ceil(backend.cooldownMs / 1000))
                      : backend.dirty ? qsTr("Unapplied changes") : ""
+            }
+            Button {
+                objectName: "undoButton"
+                text: qsTr("Undo")
+                flat: true
+                enabled: backend.canUndo
+                onClicked: backend.undo()
+                ToolTip.text: "Ctrl+Z"
+                ToolTip.visible: hovered
+            }
+            Button {
+                objectName: "redoButton"
+                text: qsTr("Redo")
+                flat: true
+                enabled: backend.canRedo
+                onClicked: backend.redo()
+                ToolTip.text: "Ctrl+Shift+Z"
+                ToolTip.visible: hovered
             }
             Button {
                 text: qsTr("Apply")

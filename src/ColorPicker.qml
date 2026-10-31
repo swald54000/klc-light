@@ -19,6 +19,7 @@ ColumnLayout {
     }
 
     Item {
+        objectName: "hueRing"
         Layout.alignment: Qt.AlignHCenter
         implicitWidth: 150
         implicitHeight: 150
@@ -65,15 +66,21 @@ ColumnLayout {
                 const d = Math.sqrt(dx * dx + dy * dy)
                 if (d < 50 || d > 76)
                     return
-                // Matches the gradient: 0° = red at the right, going counter-clockwise on screen.
+                // The gradient runs red, magenta, blue… counter-clockwise from the right, i.e.
+                // hue decreases counter-clockwise: hue = 1 − angle.
                 let angle = Math.atan2(-dy, dx) / (2 * Math.PI)
                 if (angle < 0)
                     angle += 1
-                const v = Math.max(picker.color.hsvValue, 0.05)
-                picker.pick(Qt.hsva(angle, 1, v, 1))
+                const hue = (1 - angle) % 1
+                // Keep the intensity the user set, unless the color is too dark to see the hue.
+                const v = picker.color.hsvValue < 0.1 ? 1 : picker.color.hsvValue
+                picker.pick(Qt.hsva(hue, 1, v, 1))
             }
-            onPressed: mouse => hueAt(mouse)
+            // One press–drag–release is one undo step.
+            onPressed: mouse => { backend.beginGesture(); hueAt(mouse) }
             onPositionChanged: mouse => hueAt(mouse)
+            onReleased: backend.endGesture()
+            onCanceled: backend.endGesture()
         }
     }
 
@@ -83,6 +90,7 @@ ColumnLayout {
             Layout.fillWidth: true
             from: 0; to: 1
             value: picker.color.hsvValue
+            onPressedChanged: pressed ? backend.beginGesture() : backend.endGesture()
             onMoved: picker.pick(Qt.hsva(Math.max(picker.color.hsvHue, 0), picker.color.hsvSaturation, value, 1))
         }
     }
