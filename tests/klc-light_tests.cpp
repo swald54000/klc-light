@@ -1015,6 +1015,54 @@ private slots:
         }
     }
 
+    // Step durations read in seconds (1 controller unit = 10 ms, the preview's assumption).
+    // Items made by a Repeater are not QObject children of the window: walk the visual tree.
+    static QQuickItem *findItem(QQuickItem *root, const QString &name)
+    {
+        if (root->objectName() == name)
+            return root;
+        for (QQuickItem *child : root->childItems())
+            if (QQuickItem *found = findItem(child, name))
+                return found;
+        return nullptr;
+    }
+
+    void uiStepDurationInSeconds()
+    {
+        Ui ui;
+        ui.run.backend->setBaseType("wave");
+        QQuickItem *box = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT((box = findItem(ui.window->contentItem(), "stepDuration")) && box->isVisible(), 2000);
+        ui.run.backend->setStepDuration(0, 55);
+        // The step rows may be rebuilt: look the field up again.
+        QTRY_VERIFY((box = findItem(ui.window->contentItem(), "stepDuration")) && box->property("value").toInt() == 55);
+        QVERIFY2(QRegularExpression("^0[.,]55 s$").match(box->property("displayText").toString()).hasMatch(),
+                 qPrintable(box->property("displayText").toString()));
+    }
+
+    // Holding + repeats the step; the whole hold is one undo step.
+    void uiStepDurationHoldIsOneUndoStep()
+    {
+        Ui ui;
+        ui.run.backend->setBaseType("wave");
+        QQuickItem *box = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT((box = findItem(ui.window->contentItem(), "stepDuration")) && box->isVisible(), 2000);
+        QTest::qWait(300); // let the layout settle before aiming at the button
+        QTRY_VERIFY((box = findItem(ui.window->contentItem(), "stepDuration")) != nullptr);
+        const int before = box->property("value").toInt();
+        auto *up = box->property("up").value<QObject *>()->property("indicator").value<QQuickItem *>();
+        QVERIFY(up);
+        const QPoint centre = up->mapToScene(QPointF(up->width() / 2, up->height() / 2)).toPoint();
+        const QPointer<QQuickItem> held = box;
+        QTest::mousePress(ui.window, Qt::LeftButton, {}, centre);
+        QTest::qWait(1200);
+        QTest::mouseRelease(ui.window, Qt::LeftButton, {}, centre);
+        QVERIFY2(held, "the step row was rebuilt while + was held");
+        QVERIFY(box->property("value").toInt() > before + 2);
+        ui.run.backend->undo();
+        QTRY_COMPARE(box->property("value").toInt(), before);
+    }
+
     // Undo must be visible, not only Ctrl+Z.
     void uiUndoRedoButtons()
     {

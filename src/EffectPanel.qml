@@ -63,29 +63,46 @@ GridLayout {
             visible: (panel.kind === "effect" || (panel.kind === "base" && panel.cur.type === "wave"))
             spacing: 2
             Repeater {
-                model: panel.cur.steps || []
+                // A count, not the steps array: the array is rebuilt on every edit, which would
+                // recreate every row (and kill a held + or − button) each time.
+                model: (panel.cur.steps || []).length
                 delegate: RowLayout {
+                    id: row
                     required property int index
-                    required property var modelData
+                    readonly property var step: (panel.cur.steps || [])[index] || ({ color: "black", duration: 1 })
                     Layout.fillWidth: true
                     Rectangle {
                         width: 22; height: 22
                         radius: Math.min(4, theme.radius)
-                        color: modelData.color
-                        border.width: index === panel.stepIndex ? 2 : 1
-                        border.color: index === panel.stepIndex ? "white" : Qt.rgba(1, 1, 1, 0.2)
-                        MouseArea { anchors.fill: parent; onClicked: panel.stepIndex = index }
+                        color: row.step.color
+                        border.width: row.index === panel.stepIndex ? 2 : 1
+                        border.color: row.index === panel.stepIndex ? "white" : Qt.rgba(1, 1, 1, 0.2)
+                        MouseArea { anchors.fill: parent; onClicked: panel.stepIndex = row.index }
                     }
                     SpinBox {
+                        objectName: row.index === 0 ? "stepDuration" : ""
                         Layout.fillWidth: true
                         from: 1; to: 9999
                         editable: true
-                        value: modelData.duration
-                        onValueModified: backend.setStepDuration(index, value)
-                        ToolTip.text: qsTr("Duration in controller units")
+                        value: row.step.duration
+                        // One controller unit is 10 ms (the preview's assumption): show seconds.
+                        textFromValue: function(v, locale) { return Number(v / 100).toLocaleString(locale, "f", 2) + " s" }
+                        valueFromText: function(text, locale) {
+                            let n = NaN
+                            try { n = Number.fromLocaleString(locale, text.replace(/\s*s\s*$/, "").trim()) } catch (e) {}
+                            if (isNaN(n))
+                                n = Number(text.replace(",", ".").replace(/\s*s\s*$/, ""))
+                            return isNaN(n) ? value : Math.round(n * 100)
+                        }
+                        validator: RegularExpressionValidator { regularExpression: /^\s*\d+([.,]\d{0,2})?\s*s?\s*$/ }
+                        // Holding + or − is one undo step.
+                        readonly property bool held: up.pressed || down.pressed
+                        onHeldChanged: held ? backend.beginGesture() : backend.endGesture()
+                        onValueModified: backend.setStepDuration(row.index, value)
+                        ToolTip.text: qsTr("Step duration")
                         ToolTip.visible: hovered
                     }
-                    ToolButton { text: "×"; onClicked: backend.removeStep(index) }
+                    ToolButton { text: "×"; onClicked: backend.removeStep(row.index) }
                 }
             }
             RowLayout {

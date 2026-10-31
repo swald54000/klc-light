@@ -16,7 +16,6 @@
  "Click to use, right-click to store the current color": "Clic pour utiliser, clic droit pour enregistrer la couleur actuelle",
  "COLOR": "COULEUR",
  "Digits": "Chiffres",
- "Duration in controller units": "Durée en unités du contrôleur",
  "EFFECT": "EFFET",
  "Experimental: send reactive lighting": "Expérimental : envoyer l'éclairage réactif",
  "F1–F12": "F1–F12",
@@ -79,5 +78,6 @@
   "one": "%n calque d'effet retiré pour que l'effet s'applique à tout le clavier (Ctrl+Z pour annuler).",
   "many": "%n calques d'effet retirés pour que l'effet s'applique à tout le clavier (Ctrl+Z pour annuler).",
   "other": "%n calques d'effet retirés pour que l'effet s'applique à tout le clavier (Ctrl+Z pour annuler)."
- }
+ },
+ "Step duration": "Durée de l'étape"
 }

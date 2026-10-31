@@ -6,5 +6,6 @@
  "%n effect layer(s) removed so the effect shows on the whole keyboard (Ctrl+Z to undo).": {
   "one": "%n effect layer removed so the effect shows on the whole keyboard (Ctrl+Z to undo).",
   "other": "%n effect layers removed so the effect shows on the whole keyboard (Ctrl+Z to undo)."
- }
+ },
+ "Step duration": "Step duration"
 }
