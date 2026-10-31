@@ -105,7 +105,11 @@ ColumnLayout {
                 spacing: 2
                 Label { text: modelData; opacity: 0.7 }
                 TextField {
-                    Layout.preferredWidth: 46
+                    id: rgbField
+                    objectName: "rgbField" + index
+                    // Wide enough for "255" whatever the style's padding (Material's left 14 px).
+                    TextMetrics { id: widest; font: rgbField.font; text: "255" }
+                    Layout.preferredWidth: Math.ceil(widest.advanceWidth) + leftPadding + rightPadding + 2
                     horizontalAlignment: TextInput.AlignHCenter
                     validator: IntValidator { bottom: 0; top: 255 }
                     text: Math.round([picker.color.r, picker.color.g, picker.color.b][index] * 255)

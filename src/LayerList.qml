@@ -69,6 +69,16 @@ ColumnLayout {
             ToolTip.visible: hovered
         }
     }
+    // Qt shows no tooltip on a disabled button: say why the two above are greyed.
+    Label {
+        objectName: "addEffectHint"
+        Layout.fillWidth: true
+        visible: backend.selection.length === 0
+        wrapMode: Text.WordWrap
+        font.pixelSize: 11
+        opacity: 0.7
+        text: qsTr("Select keys first to add an effect.")
+    }
     Button {
         Layout.fillWidth: true
         text: qsTr("Remove effect")

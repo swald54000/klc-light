@@ -79,5 +79,6 @@
   "many": "%n calques d'effet retirés pour que l'effet s'applique à tout le clavier (Ctrl+Z pour annuler).",
   "other": "%n calques d'effet retirés pour que l'effet s'applique à tout le clavier (Ctrl+Z pour annuler)."
  },
- "Step duration": "Durée de l'étape"
+ "Step duration": "Durée de l'étape",
+ "Select keys first to add an effect.": "Sélectionnez d'abord des touches pour ajouter un effet."
 }

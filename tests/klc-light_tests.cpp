@@ -1063,6 +1063,37 @@ private slots:
         QTRY_COMPARE(box->property("value").toInt(), before);
     }
 
+    // Qt shows no tooltip on a disabled button: a line says why "+ Wave" / "+ Pulse" are greyed.
+    void uiAddEffectHint()
+    {
+        Ui ui;
+        QQuickItem *hint = findItem(ui.window->contentItem(), "addEffectHint");
+        QVERIFY(hint);
+        QTRY_VERIFY(hint->isVisible());
+        ui.run.backend->selectGroup("wasd");
+        QTRY_VERIFY(!hint->isVisible());
+    }
+
+    // "255" must fit in the R, G and B fields (it showed "55").
+    void uiRgbFieldsFit()
+    {
+        Ui ui;
+        auto *ring = ui.window->findChild<QQuickItem *>("hueRing");
+        QVERIFY(ring);
+        ring->parentItem()->setProperty("color", QColor("#ffffff"));
+        QTest::qWait(100);
+        for (int i = 0; i < 3; ++i) {
+            QQuickItem *field = findItem(ui.window->contentItem(), QString("rgbField%1").arg(i));
+            QVERIFY(field);
+            QCOMPARE(field->property("text").toString(), QString("255"));
+            const double room = field->width() - field->property("leftPadding").toDouble()
+                                - field->property("rightPadding").toDouble();
+            QVERIFY2(field->property("contentWidth").toDouble() <= room,
+                     qPrintable(QString("field %1: text %2 px, room %3 px").arg(i)
+                                    .arg(field->property("contentWidth").toDouble()).arg(room)));
+        }
+    }
+
     // Undo must be visible, not only Ctrl+Z.
     void uiUndoRedoButtons()
     {
