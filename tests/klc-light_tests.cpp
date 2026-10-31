@@ -999,6 +999,22 @@ private slots:
         QVERIFY(!ui.run.backend->canUndo());
     }
 
+    // In a half-screen window (960×527, common in Hyprland), Apply, Undo and Redo stay on screen.
+    void uiActionBarVisibleInSmallWindow()
+    {
+        Ui ui;
+        ui.window->resize(960, 527);
+        QTest::qWait(200);
+        const QRectF bounds(0, 0, ui.window->width(), ui.window->height());
+        for (const char *name : {"applyButton", "undoButton", "redoButton"}) {
+            auto *button = ui.window->findChild<QQuickItem *>(name);
+            QVERIFY2(button && button->isVisible(), name);
+            const QRectF r = button->mapRectToScene(QRectF(0, 0, button->width(), button->height()));
+            QVERIFY2(bounds.contains(r), qPrintable(QString("%1 at %2,%3 %4×%5 outside the window")
+                                                         .arg(name).arg(r.x()).arg(r.y()).arg(r.width()).arg(r.height())));
+        }
+    }
+
     // Undo must be visible, not only Ctrl+Z.
     void uiUndoRedoButtons()
     {

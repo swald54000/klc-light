@@ -182,41 +182,7 @@ GridLayout {
         }
 
 
-        RowLayout {
-            Layout.fillWidth: true
-            Label {
-                Layout.fillWidth: true
-                font.pixelSize: 11
-                opacity: 0.7
-                text: backend.busy ? qsTr("Sending…")
-                     : backend.cooldownMs > 0 ? qsTr("Ready again in %1 s").arg(Math.ceil(backend.cooldownMs / 1000))
-                     : backend.dirty ? qsTr("Unapplied changes") : ""
-            }
-            Button {
-                objectName: "undoButton"
-                text: qsTr("Undo")
-                flat: true
-                enabled: backend.canUndo
-                onClicked: backend.undo()
-                ToolTip.text: "Ctrl+Z"
-                ToolTip.visible: hovered
-            }
-            Button {
-                objectName: "redoButton"
-                text: qsTr("Redo")
-                flat: true
-                enabled: backend.canRedo
-                onClicked: backend.redo()
-                ToolTip.text: "Ctrl+Shift+Z"
-                ToolTip.visible: hovered
-            }
-            Button {
-                text: qsTr("Apply")
-                highlighted: true
-                enabled: !backend.busy && backend.cooldownMs === 0
-                onClicked: backend.apply()
-            }
-        }
+
 
     }
 

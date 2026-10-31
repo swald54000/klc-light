@@ -7,8 +7,8 @@ ApplicationWindow {
     id: win
     width: 1280
     height: 640
-    minimumWidth: 1040
-    minimumHeight: 560
+    minimumWidth: 900
+    minimumHeight: 480
     visible: true
     title: "KLC Light"
     color: "#0e0e10"
@@ -124,8 +124,50 @@ ApplicationWindow {
                     ScrollView {
                         anchors.fill: parent
                         contentWidth: availableWidth
+                        // Nothing scrolls sideways; the hidden horizontal bar still caught clicks
+                        // on the bottom 16 px of the panel.
+                        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
                         EffectPanel { width: parent.width }
                     }
+                }
+            }
+
+            // Always on screen, whatever the window height: only the panel above scrolls.
+            RowLayout {
+                objectName: "actionBar"
+                Layout.fillWidth: true
+                Label {
+                    Layout.fillWidth: true
+                    font.pixelSize: 11
+                    opacity: 0.7
+                    text: backend.busy ? qsTr("Sending…")
+                         : backend.cooldownMs > 0 ? qsTr("Ready again in %1 s").arg(Math.ceil(backend.cooldownMs / 1000))
+                         : backend.dirty ? qsTr("Unapplied changes") : ""
+                }
+                Button {
+                    objectName: "undoButton"
+                    text: qsTr("Undo")
+                    flat: true
+                    enabled: backend.canUndo
+                    onClicked: backend.undo()
+                    ToolTip.text: "Ctrl+Z"
+                    ToolTip.visible: hovered
+                }
+                Button {
+                    objectName: "redoButton"
+                    text: qsTr("Redo")
+                    flat: true
+                    enabled: backend.canRedo
+                    onClicked: backend.redo()
+                    ToolTip.text: "Ctrl+Shift+Z"
+                    ToolTip.visible: hovered
+                }
+                Button {
+                    objectName: "applyButton"
+                    text: qsTr("Apply")
+                    highlighted: true
+                    enabled: !backend.busy && backend.cooldownMs === 0
+                    onClicked: backend.apply()
                 }
             }
         }
