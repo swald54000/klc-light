@@ -74,7 +74,8 @@ int runCli(const QStringList &args, CliEnv &env) {
             source = target;
         } else {
             QString name = target;
-            if (name.isEmpty() && !theme)
+            // A stale applied profile (deleted since) falls back to the theme's, like --theme.
+            if (name.isEmpty() && !theme && lib.names().contains(lib.applied(), Qt::CaseInsensitive))
                 name = lib.applied();
             if (name.isEmpty()) {
                 QString active = QString::fromUtf8(readFileOrEmpty(env.paths.themeName)).trimmed();

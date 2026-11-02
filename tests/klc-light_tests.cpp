@@ -1182,6 +1182,22 @@ private slots:
         QCOMPARE(run.log.packets.first().mid(4, 3), QByteArray::fromHex("222222"));
     }
 
+    // A boot apply whose applied profile is gone sends the theme's profile instead of failing.
+    void cliBootStaleApplied()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#222222", "tron");
+        Library(dir.path() + "/klc").setApplied("Gone");
+        CliRun check(dir, paths);
+        QCOMPARE(check.exec({"apply", "--check"}), 0);
+        QVERIFY(check.log.events.isEmpty());
+        CliRun run(dir, paths);
+        QCOMPARE(run.exec({"apply"}), 0);
+        QCOMPARE(run.log.packets.first().mid(4, 3), QByteArray::fromHex("222222"));
+        QCOMPARE(Library(dir.path() + "/klc").applied(), QString("Tron"));
+    }
+
     void cliByName()
     {
         QTemporaryDir dir;
