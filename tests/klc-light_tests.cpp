@@ -1596,6 +1596,41 @@ private slots:
         QCOMPARE(Library(klc).applied(), QString("B"));
     }
 
+    void backendNoProfileOpsWhileSending()
+    {
+        EditorRun run;
+        const QString klc = run.dir.path() + "/klc";
+        seed(run, {"A", "B"}, "B");
+        QVERIFY(run.backend->openProfile("A"));
+        run.hold = true;
+        run.backend->apply();
+        QTRY_COMPARE(run.sent, 1);
+        QVERIFY(run.backend->busy());
+        run.backend->deleteProfile();
+        QVERIFY(!run.backend->renameProfile("Z").isEmpty());
+        QVERIFY(!run.backend->newProfile("N").isEmpty());
+        QVERIFY(!run.backend->duplicateProfile("M").isEmpty());
+        QVERIFY(!run.backend->openProfile("B"));
+        QCOMPARE(Library(klc).names(), QStringList({"A", "B"}));
+        QCOMPARE(run.backend->profileName(), QString("A"));
+        QCOMPARE(Library(klc).applied(), QString("B"));
+        run.hold = false;
+        QTRY_COMPARE(Library(klc).applied(), QString("A"));
+        QTRY_VERIFY(!run.backend->busy());
+    }
+
+    void backendRenameAppliedLinked()
+    {
+        EditorRun run;
+        const QString klc = run.dir.path() + "/klc";
+        seed(run, {"A"}, "A");
+        Library(klc).link("A", "tron");
+        QCOMPARE(run.backend->renameProfile("B"), QString());
+        QCOMPARE(run.backend->appliedName(), QString("B"));
+        QCOMPARE(run.backend->linkedTheme(), QString("tron"));
+        QCOMPARE(Library(klc).profileForTheme("tron"), QString("B"));
+    }
+
     void backendDeleteApplied()
     {
         EditorRun run;
@@ -2145,13 +2180,14 @@ private:
                 file.write(effect + "\n");
             }
             backend = new Backend(paths, dir.path() + "/klc", KeyLabels::fromRmlvo("fr", ""),
-                                  [this](const QList<Packet> &) { ++sent; return result; },
+                                  [this](const QList<Packet> &) { ++sent; while (hold) QThread::msleep(5); return result; },
                                   dir.path() + "/colors.json");
         }
         ~EditorRun() { delete backend; }
         QTemporaryDir dir;
         ThemePaths paths;
         std::atomic<int> sent{0};
+        std::atomic<bool> hold{false}; // the fake keyboard waits while set
         ApplyResult result; // what the fake keyboard answers
         Backend *backend = nullptr;
     };
@@ -2173,7 +2209,7 @@ private:
             library.setApplied(applied);
         delete run.backend;
         run.backend = new Backend(run.paths, run.dir.path() + "/klc", KeyLabels::fromRmlvo("fr", ""),
-                                  [&run](const QList<Packet> &) { ++run.sent; return run.result; },
+                                  [&run](const QList<Packet> &) { ++run.sent; while (run.hold) QThread::msleep(5); return run.result; },
                                   run.dir.path() + "/colors.json");
     }
 

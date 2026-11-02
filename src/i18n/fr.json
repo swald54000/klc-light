@@ -76,6 +76,7 @@
  "Could not rename %1: %2": "Impossible de renommer %1 : %2",
  "Could not delete %1: %2": "Impossible de supprimer %1 : %2",
  "Could not open %1": "Impossible d'ouvrir %1",
+ "Wait for the keyboard to finish": "Attends que le clavier ait fini",
  "Reactive": "Réactif",
  "The keyboard's lighting controller is not on the USB bus (error -71 after a restart). Shut the computer down completely, then start it again: a restart is not enough.": "Le contrôleur d'éclairage du clavier n'est pas sur le bus USB (erreur -71 après un redémarrage). Éteignez complètement l'ordinateur, puis rallumez-le : un redémarrage ne suffit pas.",
  "%n effect layer(s) removed so the effect shows on the whole keyboard (Ctrl+Z to undo).": {

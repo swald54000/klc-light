@@ -563,7 +563,12 @@ void Backend::onApplyFinished(const ApplyResult &result) {
     } else {
         // What the keyboard shows, and what `klc-light apply` sends again at boot. Read
         // state.json afresh: a theme hook may have changed it since the editor opened.
-        fresh().setApplied(m_sending);
+        Library library = fresh();
+        for (const QString &name : library.names())
+            if (name.compare(m_sending, Qt::CaseInsensitive) == 0) {
+                library.setApplied(name);
+                break;
+            }
         emit libraryChanged();
     }
     m_cooldownMs = Device::MinIntervalMs;
@@ -586,6 +591,10 @@ bool Backend::save() {
 QString Backend::nameError(const QString &name) const { return fresh().nameError(name); }
 
 bool Backend::openProfile(const QString &name) {
+    if (m_busy) {
+        setError(tr("Wait for the keyboard to finish"));
+        return false;
+    }
     QStringList errors;
     const auto doc = fresh().load(name, &errors);
     if (!doc) {
@@ -598,6 +607,10 @@ bool Backend::openProfile(const QString &name) {
 }
 
 QString Backend::newProfile(const QString &name) {
+    if (m_busy) {
+        setError(tr("Wait for the keyboard to finish"));
+        return m_error;
+    }
     if (const QString problem = fresh().nameError(name); !problem.isEmpty())
         return problem;
     Document doc;
@@ -614,6 +627,10 @@ QString Backend::newProfile(const QString &name) {
 }
 
 QString Backend::duplicateProfile(const QString &name) {
+    if (m_busy) {
+        setError(tr("Wait for the keyboard to finish"));
+        return m_error;
+    }
     if (const QString problem = fresh().nameError(name); !problem.isEmpty())
         return problem;
     Document doc = m_doc;
@@ -629,6 +646,10 @@ QString Backend::duplicateProfile(const QString &name) {
 }
 
 QString Backend::renameProfile(const QString &name) {
+    if (m_busy) {
+        setError(tr("Wait for the keyboard to finish"));
+        return m_error;
+    }
     Library library = fresh();
     const QString to = name.trimmed();
     if (const QString problem = library.nameError(to, m_doc.name); !problem.isEmpty())
@@ -652,6 +673,10 @@ QString Backend::renameProfile(const QString &name) {
 }
 
 void Backend::deleteProfile() {
+    if (m_busy) {
+        setError(tr("Wait for the keyboard to finish"));
+        return;
+    }
     Library library = fresh();
     const QStringList before = library.names();
     const int index = int(before.indexOf(m_doc.name));
