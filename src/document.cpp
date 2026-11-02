@@ -84,7 +84,22 @@ Document fromLighting(const Profile &profile, const QString &name) {
         }
         doc.groups[byColor.value(hex)].keys.append(id);
     }
-    doc.groups += animated;
+
+    // v1 does not require effect names to be unique or filled in; groups do.
+    QSet<QString> taken;
+    for (const Group &group : doc.groups)
+        taken.insert(group.name);
+    for (Group &group : animated) {
+        QString base = group.name;
+        if (base.trimmed().isEmpty())
+            base = QCoreApplication::translate("Document", "Group %1").arg(doc.groups.size() + 1);
+        QString unique = base;
+        for (int n = 2; taken.contains(unique); ++n)
+            unique = QString("%1 %2").arg(base).arg(n);
+        group.name = unique;
+        taken.insert(unique);
+        doc.groups.append(group);
+    }
     return doc;
 }
 

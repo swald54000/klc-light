@@ -423,11 +423,8 @@ private slots:
         const Document d = fromLighting(p, "X");
         QCOMPARE(d.name, QString("X"));
         QCOMPARE(d.groups.size(), 3);
-        // KEY_ESC comes before KEY_W in the layout, so green opens the first group.
-        const QList<Key> keys = Layout::gs76().keys();
-        auto index = [&](const QString &id) { for (int i = 0; i < keys.size(); ++i) if (keys[i].id == id) return i; return -1; };
-        const bool escFirst = index("KEY_ESC") < index("KEY_W");
-        const Group &red = d.groups[escFirst ? 1 : 0], &green = d.groups[escFirst ? 0 : 1];
+        // Layout order lists KEY_A and KEY_W before KEY_ESC, so red opens the first group.
+        const Group &red = d.groups[0], &green = d.groups[1];
         QVERIFY(!red.animated());
         QCOMPARE(red.color.name(), QString("#ff0000"));
         QCOMPARE(red.name, QString("Group #ff0000"));
@@ -443,6 +440,41 @@ private slots:
         QCOMPARE(pulse.origin, QString("aqua-3"));
         QCOMPARE(d.groupOf("KEY_F1"), 2);
         QCOMPARE(d.groupOf("KEY_Z"), -1);
+    }
+
+    void documentFromV1UniqueNames()
+    {
+        Profile p;
+        auto effect = [](const QString &name, const QString &key) {
+            EffectLayer e;
+            e.name = name;
+            e.type = "pulse";
+            e.keys = {key};
+            e.start = QColor("#000000");
+            e.steps = {{QColor("#FFFFFF"), 10}};
+            e.origin = "aqua-0";
+            return e;
+        };
+        p.effects = {effect("Pulse 2", "KEY_F1"), effect("Pulse 2", "KEY_F2"), effect("", "KEY_F3")};
+        const Document d = fromLighting(p, "X");
+        QCOMPARE(d.groups.size(), 3);
+        QSet<QString> names;
+        for (const Group &g : d.groups) {
+            QVERIFY(!g.name.isEmpty());
+            names.insert(g.name);
+        }
+        QCOMPARE(names.size(), 3);
+        QVERIFY(validate(d, Layout::gs76()).isEmpty());
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.filePath("v1.klc.json");
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(QJsonDocument(toJson(p)).toJson());
+        file.close();
+        QStringList errors;
+        QVERIFY2(readDocument(path, &errors), qPrintable(errors.join("; ")));
     }
 
     void documentV1EffectWinsOverPaint()
