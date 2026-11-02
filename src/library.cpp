@@ -1,5 +1,6 @@
 #include "library.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -139,11 +140,11 @@ bool Library::save(const Document &saved, QString *error) {
 
 QString Library::nameError(const QString &name, const QString &except) const {
     if (name.trimmed().isEmpty())
-        return "The name is empty.";
+        return QCoreApplication::translate("Library", "The name is empty.");
     if (name.trimmed().compare(except.trimmed(), Qt::CaseInsensitive) != 0)
         for (const QString &existing : names())
             if (existing.compare(name.trimmed(), Qt::CaseInsensitive) == 0)
-                return QString("A profile named \"%1\" already exists.").arg(existing);
+                return QCoreApplication::translate("Library", "A profile named \"%1\" already exists.").arg(existing);
     return QString();
 }
 

@@ -26,6 +26,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRegularExpression>
 #include "theme.h"
 #include "translator.h"
 
@@ -1783,6 +1784,43 @@ private slots:
         QVERIFY(!translator.translate("Device", "The keyboard did not appear after attaching it (USB error -71 is likely). "
                                                 "Power-cycle its USB port or shut the computer down completely.").isNull());
         QCOMPARE(translator.translate("Main", "%n key(s) selected", nullptr, 3), QString("%n touches sélectionnées"));
+    }
+
+
+    // Every user-visible string in the sources has a French entry, and the
+    // catalog holds nothing the sources no longer use. Strings that read the
+    // same in French (OK, R, G, B) carry an identical entry on purpose.
+    void frenchCatalogCoversNewStrings()
+    {
+        const QString srcDir = QString(KLC_FIXTURES) + "/../../src";
+        QFile catalog(srcDir + "/i18n/fr.json");
+        QVERIFY(catalog.open(QIODevice::ReadOnly));
+        const QJsonObject strings = QJsonDocument::fromJson(catalog.readAll()).object();
+        QVERIFY(!strings.isEmpty());
+
+        const QString quoted = "\"(?:[^\"\\\\]|\\\\.)*\"";
+        const QRegularExpression call("(?:\\bqsTr|\\btr|\\btranslate\\(\\s*" + quoted + "\\s*,)\\s*\\(?\\s*((?:" + quoted + "\\s*)+)");
+        const QRegularExpression literal("\"((?:[^\"\\\\]|\\\\.)*)\"");
+        QSet<QString> used;
+        const QFileInfoList files = QDir(srcDir).entryInfoList({"*.qml", "*.cpp"}, QDir::Files);
+        QVERIFY(!files.isEmpty());
+        for (const QFileInfo &info : files) {
+            QFile file(info.filePath());
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            auto matches = call.globalMatch(QString::fromUtf8(file.readAll()));
+            while (matches.hasNext()) {
+                QString text;
+                auto parts = literal.globalMatch(matches.next().captured(1));
+                while (parts.hasNext())
+                    text += parts.next().captured(1);
+                text.replace("\\\"", "\"").replace("\\n", "\n").replace("\\\\", "\\");
+                used.insert(text);
+                QVERIFY2(strings.contains(text), qPrintable(info.fileName() + ": no French entry for \"" + text + "\""));
+            }
+        }
+        QVERIFY(used.size() > 50);
+        for (const QString &key : strings.keys())
+            QVERIFY2(used.contains(key), qPrintable("fr.json entry not used by any source: \"" + key + "\""));
     }
 
 
