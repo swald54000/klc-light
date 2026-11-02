@@ -162,6 +162,7 @@ private:
     bool m_experimentalReactive = false;
     int m_cooldownMs = 0;
     QString m_error, m_notice;
+    QString m_sending; // the profile being sent, applied once the send works
     QStringList m_savedColors;
     QTimer m_cooldown;
 };

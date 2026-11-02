@@ -539,8 +539,7 @@ void Backend::apply() {
         setError(tr("Could not save %1: %2").arg(m_doc.name, saveError));
         return;
     }
-    // What the keyboard shows, and what `klc-light apply` sends again at boot.
-    m_library.setApplied(m_doc.name);
+    m_sending = m_doc.name;
     m_dirty = false;
     setError(QString());
     emit profileChanged();
@@ -556,8 +555,13 @@ void Backend::apply() {
 void Backend::onApplyFinished(const ApplyResult &result) {
     m_busy = false;
     emit busyChanged();
-    if (result.error != ApplyError::None)
+    if (result.error != ApplyError::None) {
         setError(result.message);
+    } else {
+        // What the keyboard shows, and what `klc-light apply` sends again at boot. Read
+        // state.json afresh: a theme hook may have changed it since the editor opened.
+        Library(m_library.dir()).setApplied(m_sending);
+    }
     m_cooldownMs = Device::MinIntervalMs;
     m_cooldown.start();
     emit cooldownChanged();

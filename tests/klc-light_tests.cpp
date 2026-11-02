@@ -1455,6 +1455,32 @@ private slots:
         QVERIFY(run.backend->cooldownMs() > 0);
     }
 
+    // `applied` names what the keyboard shows: only a send that worked changes it.
+    void backendApplyFailureKeepsApplied()
+    {
+        EditorRun run;
+        const QString klc = run.dir.path() + "/klc";
+        Library(klc).setApplied("Other");
+        run.result = {ApplyError::KeyboardAbsent, "absent"};
+        run.backend->setColor(QColor("#123456"));
+        run.backend->apply();
+        QTRY_COMPARE(run.sent, 1);
+        QTRY_VERIFY(!run.backend->busy());
+        QCOMPARE(Library(klc).applied(), QString("Other"));
+        QCOMPARE(run.backend->error(), QString("absent"));
+    }
+
+    void backendApplySuccessSetsApplied()
+    {
+        EditorRun run;
+        const QString klc = run.dir.path() + "/klc";
+        Library(klc).setApplied("Other");
+        run.backend->setColor(QColor("#123456"));
+        run.backend->apply();
+        QTRY_COMPARE(run.sent, 1);
+        QTRY_COMPARE(Library(klc).applied(), QString("Default"));
+    }
+
     void backendApplyInvalid()
     {
         EditorRun run;
@@ -1943,13 +1969,14 @@ private:
                 file.write(effect + "\n");
             }
             backend = new Backend(paths, dir.path() + "/klc", KeyLabels::fromRmlvo("fr", ""),
-                                  [this](const QList<Packet> &) { ++sent; return ApplyResult{}; },
+                                  [this](const QList<Packet> &) { ++sent; return result; },
                                   dir.path() + "/colors.json");
         }
         ~EditorRun() { delete backend; }
         QTemporaryDir dir;
         ThemePaths paths;
         std::atomic<int> sent{0};
+        ApplyResult result; // what the fake keyboard answers
         Backend *backend = nullptr;
     };
 
