@@ -51,6 +51,7 @@ class Backend : public QObject {
     // The library, read afresh from disk each time: a theme hook can change it while the
     // editor is open.
     Q_PROPERTY(QStringList profiles READ profiles NOTIFY libraryChanged)
+    Q_PROPERTY(QStringList unreadableProfiles READ unreadableProfiles NOTIFY libraryChanged)
     Q_PROPERTY(QString profileName READ profileName NOTIFY libraryChanged)
     Q_PROPERTY(QString appliedName READ appliedName NOTIFY libraryChanged)
     Q_PROPERTY(QString linkedTheme READ linkedTheme NOTIFY libraryChanged)
@@ -89,6 +90,7 @@ public:
     QStringList savedColors() const { return m_savedColors; }
     const Document &document() const { return m_doc; }
     QStringList profiles() const { return fresh().names(); }
+    QStringList unreadableProfiles() const; // listed in profiles, but cannot be opened
     QString profileName() const { return m_doc.name; }
     QString appliedName() const { return fresh().applied(); }
     QString linkedTheme() const { return fresh().themeOf(m_doc.name); }

@@ -55,7 +55,12 @@ RowLayout {
         enabled: !backend.busy
         textRole: "text"
         valueRole: "name"
-        model: backend.profiles.map(n => ({ name: n, text: n === backend.appliedName ? n + " · " + qsTr("applied") : n }))
+        // Marked: the applied profile, and those that cannot be read (opening one says why).
+        model: backend.profiles.map(n => ({
+            name: n,
+            text: n + (n === backend.appliedName ? " · " + qsTr("applied") : "")
+                    + (backend.unreadableProfiles.indexOf(n) >= 0 ? " · " + qsTr("unreadable") : "")
+        }))
         onActivated: index => {
             const name = model[index].name
             bar.switchTo(name)

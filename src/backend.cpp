@@ -596,6 +596,14 @@ bool Backend::save() {
 
 QString Backend::nameError(const QString &name) const { return fresh().nameError(name); }
 
+QStringList Backend::unreadableProfiles() const {
+    QStringList names;
+    for (const LibraryEntry &entry : fresh().entries())
+        if (!entry.readable)
+            names.append(entry.name);
+    return names;
+}
+
 bool Backend::openProfile(const QString &name) {
     if (m_busy) {
         setError(tr("Wait for the keyboard to finish"));

@@ -1760,6 +1760,17 @@ private slots:
         QVERIFY(!run.backend->openProfile("nope"));
     }
 
+    void backendListsUnreadableProfiles()
+    {
+        EditorRun run;
+        const QString klc = run.dir.path() + "/klc";
+        seed(run, {"A"}, "A");
+        QCOMPARE(run.backend->unreadableProfiles(), QStringList());
+        write(klc + "/profiles/broken.klc.json", "{ not json");
+        QCOMPARE(run.backend->unreadableProfiles(), QStringList{"broken"});
+        QVERIFY(run.backend->profiles().contains("broken"));
+    }
+
     // The last profile deleted, the replacement is named in the user's language.
     void backendDefaultNameTranslated()
     {
@@ -2005,6 +2016,20 @@ private slots:
         QVERIFY(!callText(box, 0).toString().contains("applied"));
         QVERIFY2(callText(box, 1).toString().contains("applied"), qPrintable(callText(box, 1).toString()));
         QCOMPARE(box->property("currentIndex").toInt(), 1); // the open profile: the applied one
+    }
+
+    // An unreadable profile is listed, marked as such (spec §7).
+    void uiProfileBoxMarksUnreadable()
+    {
+        Ui ui([](EditorRun &run) {
+            seed(run, {"A"}, "A");
+            write(run.dir.path() + "/klc/profiles/broken.klc.json", "{ not json");
+        });
+        QQuickItem *box = findItem(ui.window->contentItem(), "profileBox");
+        QVERIFY(box);
+        QTRY_COMPARE(box->property("count").toInt(), 2);
+        QVERIFY(!callText(box, 0).toString().contains("unreadable"));
+        QCOMPARE(callText(box, 1).toString(), QString("broken · unreadable"));
     }
 
     void uiSwitchWithChangesAsks()
