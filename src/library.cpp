@@ -101,7 +101,7 @@ std::optional<LibraryEntry> Library::find(const QString &name) const {
 std::optional<Document> Library::load(const QString &name, QStringList *errors) const {
     const auto entry = find(name);
     if (!entry) {
-        errors->append(QString("no profile named \"%1\"").arg(name));
+        errors->append(QCoreApplication::translate("Library", "No profile named \"%1\"").arg(name));
         return std::nullopt;
     }
     return readDocument(entry->path, errors);
@@ -152,7 +152,7 @@ bool Library::rename(const QString &fromName, const QString &toName, QString *er
     const QString to = toName.trimmed();
     const auto entry = find(fromName);
     if (!entry) {
-        *error = QString("no profile named \"%1\"").arg(fromName);
+        *error = QCoreApplication::translate("Library", "No profile named \"%1\"").arg(fromName);
         return false;
     }
     const QString from = entry->name;
@@ -197,7 +197,7 @@ bool Library::rename(const QString &fromName, const QString &toName, QString *er
 bool Library::remove(const QString &name, QString *error) {
     const auto entry = find(name);
     if (!entry) {
-        *error = QString("no profile named \"%1\"").arg(name);
+        *error = QCoreApplication::translate("Library", "No profile named \"%1\"").arg(name);
         return false;
     }
     if (!QFile::remove(entry->path)) {

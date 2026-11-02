@@ -758,6 +758,25 @@ private slots:
         QCOMPARE(again.profileForTheme("tron"), QString());
     }
 
+    void libraryMessagesTranslated()
+    {
+        QTemporaryDir dir;
+        write(dir.path() + "/language", "fr\n");
+        Translator translator(dir.path() + "/language", ":/i18n");
+        QCoreApplication::installTranslator(&translator);
+        Library lib(dir.path());
+        QStringList errors;
+        QVERIFY(!lib.load("Nope", &errors));
+        QString error;
+        QVERIFY(!lib.rename("Nope", "B", &error));
+        QString removeError;
+        QVERIFY(!lib.remove("Nope", &removeError));
+        QCoreApplication::removeTranslator(&translator);
+        QCOMPARE(errors, QStringList{"Aucun profil nommé « Nope »"});
+        QCOMPARE(error, QString("Aucun profil nommé « Nope »"));
+        QCOMPARE(removeError, QString("Aucun profil nommé « Nope »"));
+    }
+
     void libraryNameError()
     {
         QTemporaryDir dir;
