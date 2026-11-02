@@ -4,13 +4,14 @@ import QtQuick.Controls.Material
 import QtQuick.Layouts
 
 // One compact row above the keyboard: the open profile (a picker), New / Duplicate / Rename /
-// Delete, and the theme the profile is linked to. Switching asks first when there are
-// unsaved changes.
+// Delete, and the theme the profile is linked to. Switching, or starting a new profile, asks
+// first when there are unsaved changes.
 RowLayout {
     id: bar
     spacing: 6
 
-    // The profile the user asked for while the switch dialog is open.
+    // What waits on the switch dialog: "open" pendingProfile, or "new" (ask for its name).
+    property string pendingAction: "open"
     property string pendingProfile: ""
     // Which operation the name dialog is for: "new", "duplicate" or "rename".
     property string nameMode: "new"
@@ -32,12 +33,26 @@ RowLayout {
     function switchTo(name) {
         if (name === backend.profileName)
             return
-        if (backend.dirty) {
-            pendingProfile = name
+        pendingAction = "open"
+        pendingProfile = name
+        if (backend.dirty)
             switchDialog.open()
-        } else {
-            backend.openProfile(name)
-        }
+        else
+            proceed()
+    }
+    function requestNew() {
+        pendingAction = "new"
+        if (backend.dirty)
+            switchDialog.open()
+        else
+            proceed()
+    }
+    // Once the changes are saved or discarded.
+    function proceed() {
+        if (pendingAction === "new")
+            openName("new")
+        else
+            backend.openProfile(pendingProfile)
     }
 
     Connections {
@@ -84,7 +99,8 @@ RowLayout {
             Layout.preferredHeight: 32
             leftPadding: 8
             rightPadding: 8
-            onClicked: modelData.mode === "delete" ? deleteProfileDialog.open() : bar.openName(modelData.mode)
+            onClicked: modelData.mode === "delete" ? deleteProfileDialog.open()
+                     : modelData.mode === "new" ? bar.requestNew() : bar.openName(modelData.mode)
         }
     }
 
@@ -145,10 +161,13 @@ RowLayout {
         Label {
             width: parent.width
             wrapMode: Text.WordWrap
-            text: qsTr("Save the changes to “%1” before opening “%2”?").arg(backend.profileName).arg(bar.pendingProfile)
+            text: bar.pendingAction === "new"
+                  ? qsTr("Save the changes to “%1” before creating a new profile?").arg(backend.profileName)
+                  : qsTr("Save the changes to “%1” before opening “%2”?").arg(backend.profileName).arg(bar.pendingProfile)
         }
-        onAccepted: { if (backend.save()) backend.openProfile(bar.pendingProfile) }
-        onDiscarded: { switchDialog.close(); backend.openProfile(bar.pendingProfile) }
+        onAccepted: { if (backend.save()) bar.proceed() }
+        // The changes go when the new profile opens; cancelling its name keeps them.
+        onDiscarded: { switchDialog.close(); bar.proceed() }
     }
 
     OpaqueDialog {

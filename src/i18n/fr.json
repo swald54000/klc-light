@@ -57,6 +57,7 @@
  "Rename": "Renommer",
  "Rename profile": "Renommer le profil",
  "Save": "Enregistrer",
+ "Save the changes to “%1” before creating a new profile?": "Enregistrer les modifications de « %1 » avant de créer un nouveau profil ?",
  "Save the changes to “%1” before opening “%2”?": "Enregistrer les modifications de « %1 » avant d'ouvrir « %2 » ?",
  "Select keys first.": "Sélectionnez d'abord des touches.",
  "Sending…": "Envoi…",

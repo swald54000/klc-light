@@ -2060,6 +2060,50 @@ private slots:
         QTRY_COMPARE(box->property("currentIndex").toInt(), 1);
     }
 
+    // New with unsaved changes asks first, like switching: nothing is lost behind the user's back.
+    void uiNewWithChangesAsks()
+    {
+        Ui ui([](EditorRun &run) { seed(run, {"A", "B"}, "A"); });
+        ui.run.backend->setColor(QColor("#123456"));
+        QTest::mouseClick(ui.window, Qt::LeftButton, {}, itemCentre(findItem(ui.window->contentItem(), "newProfileButton")));
+        auto *dialog = ui.window->findChild<QObject *>("switchDialog");
+        auto *nameDialog = ui.window->findChild<QObject *>("profileNameDialog");
+        QVERIFY(dialog && nameDialog);
+        QTRY_VERIFY(dialog->property("opened").toBool());
+        QVERIFY(!nameDialog->property("visible").toBool());
+        QCOMPARE(ui.run.backend->profileName(), QString("A"));
+        QVERIFY(ui.run.backend->dirty());
+        QMetaObject::invokeMethod(dialog, "discarded");
+        QTRY_VERIFY(nameDialog->property("opened").toBool());
+        QQuickItem *field = findItem(ui.window->contentItem(), "profileNameField");
+        QVERIFY(field && field->isVisible());
+        QCOMPARE(field->property("text").toString(), QString());
+        field->setProperty("text", "C");
+        QQuickItem *ok = findItem(ui.window->contentItem(), "profileNameOk");
+        QTRY_VERIFY(ok->isEnabled());
+        QMetaObject::invokeMethod(ok, "clicked");
+        QTRY_COMPARE(ui.run.backend->profileName(), QString("C"));
+        QVERIFY(!ui.run.backend->dirty());
+        ui.run.backend->openProfile("A");
+        QVERIFY(ui.run.backend->baseSummary().value("color").value<QColor>() != QColor("#123456"));
+    }
+
+    // Save in that dialog keeps the changes, then asks for the new profile's name.
+    void uiNewWithChangesSaves()
+    {
+        Ui ui([](EditorRun &run) { seed(run, {"A"}, "A"); });
+        ui.run.backend->setColor(QColor("#123456"));
+        QTest::mouseClick(ui.window, Qt::LeftButton, {}, itemCentre(findItem(ui.window->contentItem(), "newProfileButton")));
+        auto *dialog = ui.window->findChild<QObject *>("switchDialog");
+        QTRY_VERIFY(dialog->property("opened").toBool());
+        QMetaObject::invokeMethod(dialog, "accepted");
+        auto *nameDialog = ui.window->findChild<QObject *>("profileNameDialog");
+        QTRY_VERIFY(nameDialog->property("opened").toBool());
+        QVERIFY(!ui.run.backend->dirty());
+        QCOMPARE(ui.run.backend->profileName(), QString("A"));
+        QCOMPARE(ui.run.backend->baseSummary().value("color").value<QColor>(), QColor("#123456"));
+    }
+
     void uiSwitchWithoutChangesOpens()
     {
         Ui ui([](EditorRun &run) { seed(run, {"A", "B"}, "A"); });
