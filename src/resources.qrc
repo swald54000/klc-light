@@ -2,7 +2,7 @@
     <qresource prefix="/">
         <file alias="Main.qml">Main.qml</file>
         <file alias="KeyboardView.qml">KeyboardView.qml</file>
-        <file alias="LayerList.qml">LayerList.qml</file>
+        <file alias="GroupList.qml">GroupList.qml</file>
         <file alias="EffectPanel.qml">EffectPanel.qml</file>
         <file alias="ColorPicker.qml">ColorPicker.qml</file>
         <file alias="FlatComboBox.qml">FlatComboBox.qml</file>

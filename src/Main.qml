@@ -29,7 +29,7 @@ ApplicationWindow {
     Shortcut { sequence: "Space"; context: Qt.ApplicationShortcut; onActivated: backend.apply() }
     Shortcut { sequences: [StandardKey.Undo]; context: Qt.ApplicationShortcut; onActivated: backend.undo() }
     Shortcut { sequence: "Ctrl+Shift+Z"; context: Qt.ApplicationShortcut; onActivated: backend.redo() }
-    Shortcut { sequence: "Esc"; context: Qt.ApplicationShortcut; onActivated: { win.helpVisible = false; backend.clearSelection() } }
+    Shortcut { sequence: "Esc"; context: Qt.ApplicationShortcut; onActivated: { win.helpVisible = false; backend.openBase(); backend.clearSelection() } }
 
     function requestQuit() {
         if (backend.dirty)
@@ -84,7 +84,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.min(width * 0.36, win.height * 0.45)
                 padding: 6
-                KeyboardView { anchors.fill: parent }
+                KeyboardView { objectName: "keyboardView"; anchors.fill: parent }
             }
 
             RowLayout {
@@ -132,7 +132,12 @@ ApplicationWindow {
                 Pane {
                     Layout.preferredWidth: 240
                     Layout.fillHeight: true
-                    LayerList { anchors.fill: parent }
+                    ScrollView {
+                        anchors.fill: parent
+                        contentWidth: availableWidth
+                        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                        GroupList { width: parent.width }
+                    }
                 }
 
                 Pane {

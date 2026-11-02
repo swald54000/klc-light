@@ -63,6 +63,8 @@ Item {
             required property var modelData
             readonly property rect r: view.keyRect(modelData)
             readonly property bool selected: backend.selection.indexOf(modelData.id) >= 0
+            // Key of the open group: a lighter veil and a thin outline, apart from the selection.
+            readonly property bool inGroup: backend.groupKeys.indexOf(modelData.id) >= 0
             // Reading revision re-evaluates the color after every edit.
             readonly property color light: backend.revision >= 0 ? backend.previewColor(modelData.id, view.clock) : "black"
             // How bright the LED is, to fade the glow out for dark or switched-off keys.
@@ -92,6 +94,16 @@ Item {
                 }
                 border.width: key.selected ? Math.max(2, 2.5 * view.scale) : 1
                 border.color: key.selected ? "white" : Qt.rgba(0, 0, 0, 0.6)
+            }
+
+            // The open group's keys: accent-tinted veil with a thin accent outline.
+            Rectangle {
+                anchors.fill: parent
+                radius: cap.radius
+                visible: key.inGroup
+                color: Qt.rgba(1, 1, 1, 0.07)
+                border.width: 1
+                border.color: Qt.rgba(Material.accent.r, Material.accent.g, Material.accent.b, 0.8)
             }
 
             // A light veil so the selection also stands out on brightly lit keys.

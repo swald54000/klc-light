@@ -2039,15 +2039,99 @@ private slots:
         QTRY_COMPARE(box->property("value").toInt(), before);
     }
 
-    // Qt shows no tooltip on a disabled button: a line says why "+ Wave" / "+ Pulse" are greyed.
-    void uiAddEffectHint()
+    // Scene position of the centre of a keyboard key, from the layout units of backend.keys.
+    static QPoint keyCentre(QQuickWindow *window, Backend *backend, const QString &id)
+    {
+        QQuickItem *view = findItem(window->contentItem(), "keyboardView");
+        if (!view)
+            return {};
+        for (const QVariant &v : backend->keys()) {
+            const QVariantMap k = v.toMap();
+            if (k.value("id").toString() != id)
+                continue;
+            const double s = view->property("scale").toDouble();
+            const double x = view->property("offsetX").toDouble() +
+                             ((k.value("left").toDouble() + k.value("right").toDouble()) / 2 - view->property("minX").toDouble()) * s;
+            const double y = view->property("offsetY").toDouble() +
+                             ((k.value("top").toDouble() + k.value("bottom").toDouble()) / 2 - view->property("minY").toDouble()) * s;
+            return view->mapToScene(QPointF(x, y)).toPoint();
+        }
+        return {};
+    }
+
+    static QPoint itemCentre(QQuickItem *item)
+    {
+        return item->mapToScene(QPointF(item->width() / 2, item->height() / 2)).toPoint();
+    }
+
+    void uiClickKeyOpensGroup()
     {
         Ui ui;
-        QQuickItem *hint = findItem(ui.window->contentItem(), "addEffectHint");
-        QVERIFY(hint);
-        QTRY_VERIFY(hint->isVisible());
-        ui.run.backend->selectGroup("wasd");
-        QTRY_VERIFY(!hint->isVisible());
+        makeGroup(ui.run.backend, "ZQSD", {"KEY_W", "KEY_A", "KEY_S", "KEY_D"});
+        ui.run.backend->openBase();
+        QTRY_VERIFY(!keyCentre(ui.window, ui.run.backend, "KEY_A").isNull());
+        QTest::mouseClick(ui.window, Qt::LeftButton, {}, keyCentre(ui.window, ui.run.backend, "KEY_A"));
+        QQuickItem *name = nullptr;
+        QTRY_VERIFY((name = findItem(ui.window->contentItem(), "groupNameField")) && name->isVisible());
+        QTRY_COMPARE(name->property("text").toString(), QString("ZQSD"));
+        QQuickItem *behavior = findItem(ui.window->contentItem(), "behaviorBox");
+        QVERIFY(behavior && behavior->isVisible());
+    }
+
+    void uiSelectionPanel()
+    {
+        Ui ui;
+        QQuickItem *list = findItem(ui.window->contentItem(), "groupList");
+        QVERIFY(list);
+        const int before = list->property("count").toInt();
+        QTest::mouseClick(ui.window, Qt::LeftButton, {}, keyCentre(ui.window, ui.run.backend, "KEY_ESC"));
+        QQuickItem *name = nullptr;
+        QTRY_VERIFY((name = findItem(ui.window->contentItem(), "newGroupName")) && name->isVisible());
+        QCOMPARE(name->property("text").toString(), ui.run.backend->defaultGroupName());
+        QQuickItem *create = findItem(ui.window->contentItem(), "createGroupButton");
+        QVERIFY(create && create->isVisible());
+        QTest::mouseClick(ui.window, Qt::LeftButton, {}, itemCentre(create));
+        QTRY_COMPARE(list->property("count").toInt(), before + 1);
+    }
+
+    // A refused creation says why, next to the field.
+    void uiCreateGroupError()
+    {
+        Ui ui;
+        makeGroup(ui.run.backend, "Mix", {"KEY_Q"});
+        ui.run.backend->select({"KEY_ESC"}, false);
+        QQuickItem *name = nullptr;
+        QTRY_VERIFY((name = findItem(ui.window->contentItem(), "newGroupName")) && name->isVisible());
+        name->setProperty("text", "Mix");
+        QTest::mouseClick(ui.window, Qt::LeftButton, {}, itemCentre(findItem(ui.window->contentItem(), "createGroupButton")));
+        QQuickItem *problem = nullptr;
+        QTRY_VERIFY((problem = findItem(ui.window->contentItem(), "newGroupError")) && problem->isVisible());
+        QVERIFY(problem->property("text").toString().contains("Mix"));
+    }
+
+    void uiGroupRowOpens()
+    {
+        Ui ui;
+        ui.window->resize(1280, 1000); // the column scrolls in a short window
+        makeGroup(ui.run.backend, "One", {"KEY_Q"});
+        makeGroup(ui.run.backend, "Two", {"KEY_W"});
+        ui.run.backend->openBase();
+        QQuickItem *row = nullptr;
+        QTRY_VERIFY((row = findItem(ui.window->contentItem(), "groupRow1")) && row->isVisible());
+        QTest::mouseClick(ui.window, Qt::LeftButton, {}, itemCentre(row));
+        QTRY_COMPARE(ui.run.backend->currentGroup(), 1);
+    }
+
+    void uiAnimatedCount()
+    {
+        Ui ui;
+        makeGroup(ui.run.backend, "One", {"KEY_Q"});
+        QVERIFY(ui.run.backend->setBehavior("pulse").isEmpty());
+        makeGroup(ui.run.backend, "Two", {"KEY_W"});
+        QVERIFY(ui.run.backend->setBehavior("pulse").isEmpty());
+        QQuickItem *label = findItem(ui.window->contentItem(), "animatedCount");
+        QVERIFY(label);
+        QTRY_VERIFY(label->property("text").toString().contains("2 / 6"));
     }
 
     // "255" must fit in the R, G and B fields (it showed "55").

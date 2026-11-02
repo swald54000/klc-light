@@ -8,7 +8,6 @@
   "other": "%n effect layers removed so the effect shows on the whole keyboard (Ctrl+Z to undo)."
  },
  "Step duration": "Step duration",
- "Select keys first to add an effect.": "Select keys first to add an effect.",
  "Click, Ctrl+click, drag · ? for help": "Click, Ctrl+click, drag · ? for help",
  "Dismiss": "Dismiss",
  "Remove this step": "Remove this step",
@@ -18,5 +17,9 @@
  "Add a key to the selection": "Add a key to the selection",
  "Drag": "Drag",
  "Select a rectangle of keys": "Select a rectangle of keys",
- "Apply to the keyboard (nothing is sent before)": "Apply to the keyboard (nothing is sent before)"
+ "Apply to the keyboard (nothing is sent before)": "Apply to the keyboard (nothing is sent before)",
+ "%1 · %n key(s)": {
+  "one": "%1 · %n key",
+  "other": "%1 · %n keys"
+ }
 }

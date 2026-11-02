@@ -43,22 +43,87 @@ GridLayout {
             onActivated: backend.setBaseType(currentValue)
         }
 
-        Label {
+        // Free keys: make a group of them, or add them to one.
+        ColumnLayout {
             Layout.fillWidth: true
             visible: panel.kind === "selection"
-            text: qsTr("%n key(s) selected", "", backend.selection.length)
-            wrapMode: Text.WordWrap
-            opacity: 0.8
+            spacing: 8
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("%n key(s) selected", "", backend.selection.length)
+                wrapMode: Text.WordWrap
+                opacity: 0.8
+            }
+            Label { text: qsTr("New group"); font.pixelSize: 11; opacity: 0.6 }
+            TextField {
+                id: newGroupName
+                objectName: "newGroupName"
+                Layout.fillWidth: true
+                // The default follows the selection (the key's label for a single key).
+                text: backend.selection.length >= 0 ? backend.defaultGroupName() : ""
+                onTextEdited: newGroupError.text = ""
+                onAccepted: createGroupButton.clicked()
+            }
+            Button {
+                id: createGroupButton
+                objectName: "createGroupButton"
+                Layout.fillWidth: true
+                text: qsTr("Create group")
+                onClicked: newGroupError.text = backend.createGroup(newGroupName.text)
+            }
+            Label {
+                id: newGroupError
+                objectName: "newGroupError"
+                Layout.fillWidth: true
+                visible: text !== ""
+                wrapMode: Text.WordWrap
+                font.pixelSize: 11
+                color: "#ff8a80"
+                Connections {
+                    target: backend
+                    function onSelectionChanged() { newGroupError.text = "" }
+                }
+            }
+            FlatComboBox {
+                objectName: "addToGroupBox"
+                Layout.fillWidth: true
+                visible: backend.groups.length > 0
+                model: backend.groups.map(g => g.name)
+                currentIndex: -1
+                displayText: qsTr("Add to group")
+                onActivated: index => backend.addSelectionToGroup(index)
+            }
         }
 
-        Label {
+        TextField {
+            id: groupName
+            objectName: "groupNameField"
             Layout.fillWidth: true
             visible: panel.kind === "group"
-            text: panel.cur.name || ""
             font.bold: true
+            readonly property string shown: panel.cur.name || ""
+            text: shown
+            onShownChanged: { text = shown; groupNameError.text = "" }
+            onTextEdited: groupNameError.text = ""
+            // Renaming happens on Enter or when the field loses focus; a refusal is shown
+            // under the field and the typed text kept for correction.
+            onEditingFinished: {
+                if (text !== shown)
+                    groupNameError.text = backend.renameGroup(backend.currentGroup, text)
+            }
+        }
+        Label {
+            id: groupNameError
+            objectName: "groupNameError"
+            Layout.fillWidth: true
+            visible: text !== ""
+            wrapMode: Text.WordWrap
+            font.pixelSize: 11
+            color: "#ff8a80"
         }
 
         FlatComboBox {
+            id: behaviorBox
             objectName: "behaviorBox"
             Layout.fillWidth: true
             visible: panel.kind === "group"
@@ -71,14 +136,14 @@ GridLayout {
             valueRole: "value"
             currentIndex: Math.max(0, model.findIndex(m => m.value === panel.cur.behavior))
             onActivated: {
-                const problem = backend.setBehavior(currentValue)
-                currentIndex = Math.max(0, model.findIndex(m => m.value === panel.cur.behavior))
-                if (problem !== "")
-                    behaviorProblem.text = problem
+                behaviorProblem.text = backend.setBehavior(currentValue)
+                // A refused change leaves the group as it was: show that, and keep the binding.
+                currentIndex = Qt.binding(() => Math.max(0, model.findIndex(m => m.value === panel.cur.behavior)))
             }
         }
         Label {
             id: behaviorProblem
+            objectName: "behaviorError"
             Layout.fillWidth: true
             visible: panel.kind === "group" && text !== ""
             wrapMode: Text.WordWrap
@@ -153,6 +218,24 @@ GridLayout {
                     ToolTip.text: qsTr("Wave origin, from the captured preset")
                     ToolTip.visible: hovered
                 }
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            visible: panel.kind === "group"
+            Button {
+                objectName: "removeKeysButton"
+                Layout.fillWidth: true
+                text: qsTr("Remove selected keys")
+                enabled: backend.selection.length > 0
+                onClicked: backend.removeSelectionFromGroup()
+            }
+            Button {
+                objectName: "deleteGroupButton"
+                Layout.fillWidth: true
+                text: qsTr("Delete group")
+                onClicked: backend.deleteGroup(backend.currentGroup)
             }
         }
 
