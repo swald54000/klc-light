@@ -1,5 +1,5 @@
 pkgname=klc-light
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc='Per-key lighting editor for the MSI GS76 keyboard, one profile per Omarchy theme'
 arch=('x86_64')
