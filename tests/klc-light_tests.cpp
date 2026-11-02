@@ -2349,6 +2349,19 @@ private slots:
         QVERIFY2(note->property("text").toString().contains("A"), qPrintable(note->property("text").toString()));
     }
 
+    // Changes are saved by Save (Ctrl+S) or Apply: unsaved is what the status line reports.
+    void uiStatusSaysUnsaved()
+    {
+        Ui ui;
+        QQuickItem *status = findItem(ui.window->contentItem(), "statusLabel");
+        QVERIFY(status);
+        QCOMPARE(status->property("text").toString(), QString());
+        ui.run.backend->setColor(QColor("#123456"));
+        QTRY_COMPARE(status->property("text").toString(), QString("Unsaved changes"));
+        QVERIFY(ui.run.backend->save());
+        QTRY_COMPARE(status->property("text").toString(), QString());
+    }
+
     void uiQuitSaveSaves()
     {
         Ui ui;

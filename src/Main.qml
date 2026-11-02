@@ -21,7 +21,7 @@ ApplicationWindow {
     Material.roundedScale: theme.radius
 
     property bool helpVisible: false
-    // Set once the user chose to discard unapplied changes, so closing goes through.
+    // Set once the user chose to discard unsaved changes, so closing goes through.
     property bool discarding: false
 
     Shortcut { sequence: "?"; context: Qt.ApplicationShortcut; onActivated: win.helpVisible = !win.helpVisible }
@@ -168,12 +168,13 @@ ApplicationWindow {
                 objectName: "actionBar"
                 Layout.fillWidth: true
                 Label {
+                    objectName: "statusLabel"
                     Layout.fillWidth: true
                     font.pixelSize: 11
                     opacity: 0.7
                     text: backend.busy ? qsTr("Sending…")
                          : backend.cooldownMs > 0 ? qsTr("Ready again in %1 s").arg(Math.ceil(backend.cooldownMs / 1000))
-                         : backend.dirty ? qsTr("Unapplied changes") : ""
+                         : backend.dirty ? qsTr("Unsaved changes") : ""
                 }
                 Button {
                     objectName: "undoButton"
