@@ -225,11 +225,14 @@ ApplicationWindow {
                     columns: 2
                     columnSpacing: 24
                     Repeater {
+                        id: helpLines
+                        // [key, what it does]: both columns read the same line.
                         model: [
                             [qsTr("Click"), qsTr("Select a key")],
                             [qsTr("Ctrl+click"), qsTr("Add a key to the selection")],
                             [qsTr("Drag"), qsTr("Select a rectangle of keys")],
                             ["Space", qsTr("Apply to the keyboard (nothing is sent before)")],
+                            ["Ctrl+S", qsTr("Save without sending")],
                             ["Ctrl+Z", qsTr("Undo")],
                             ["Ctrl+Shift+Z", qsTr("Redo")],
                             ["Esc", qsTr("Clear the selection")],
@@ -241,19 +244,20 @@ ApplicationWindow {
                             required property int index
                             Layout.row: index
                             Layout.column: 0
+                            objectName: "helpKey" + index
                             text: modelData[0]
                             font.bold: true
                         }
                     }
                     Repeater {
-                        model: [qsTr("Apply to the keyboard"), qsTr("Undo"), qsTr("Redo"), qsTr("Clear the selection"),
-                                qsTr("Show or hide this help"), qsTr("Quit")]
+                        model: helpLines.model
                         delegate: Label {
-                            required property string modelData
+                            required property var modelData
                             required property int index
                             Layout.row: index
                             Layout.column: 1
-                            text: modelData
+                            objectName: "helpText" + index
+                            text: modelData[1]
                         }
                     }
                 }

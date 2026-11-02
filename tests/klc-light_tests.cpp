@@ -2362,6 +2362,27 @@ private slots:
         QTRY_COMPARE(status->property("text").toString(), QString());
     }
 
+    // Each help line pairs a key with what it does; Ctrl+S is listed.
+    void uiHelpListsShortcuts()
+    {
+        Ui ui;
+        ui.window->setProperty("helpVisible", true);
+        QQuickItem *root = ui.window->contentItem();
+        QMap<QString, QString> help;
+        for (int i = 0;; ++i) {
+            QQuickItem *key = findItem(root, QString("helpKey%1").arg(i));
+            QQuickItem *text = findItem(root, QString("helpText%1").arg(i));
+            if (!key)
+                break;
+            QVERIFY2(text, qPrintable(key->property("text").toString()));
+            help.insert(key->property("text").toString(), text->property("text").toString());
+        }
+        QCOMPARE(help.value("Click"), QString("Select a key"));
+        QCOMPARE(help.value("Space"), QString("Apply to the keyboard (nothing is sent before)"));
+        QCOMPARE(help.value("Q"), QString("Quit"));
+        QCOMPARE(help.value("Ctrl+S"), QString("Save without sending"));
+    }
+
     void uiQuitSaveSaves()
     {
         Ui ui;
