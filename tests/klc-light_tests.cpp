@@ -1,3 +1,4 @@
+#include <functional>
 #include <QDir>
 #include <QFile>
 #include <QTemporaryDir>
@@ -2510,24 +2511,119 @@ private slots:
         QTRY_VERIFY(!hint->isVisible());
     }
 
-    // "255" must fit in the R, G and B fields (it showed "55").
-    void uiRgbFieldsFit()
+    static QQuickItem *picker(QQuickWindow *window)
+    {
+        auto *ring = window->findChild<QQuickItem *>("hueRing");
+        return ring ? ring->parentItem() : nullptr;
+    }
+
+    // The hex field accepts "#rrggbb" or "rrggbb" with spaces; anything else reverts.
+    void uiHexFieldParses()
     {
         Ui ui;
-        auto *ring = ui.window->findChild<QQuickItem *>("hueRing");
-        QVERIFY(ring);
-        ring->parentItem()->setProperty("color", QColor("#ffffff"));
-        QTest::qWait(100);
-        for (int i = 0; i < 3; ++i) {
-            QQuickItem *field = findItem(ui.window->contentItem(), QString("rgbField%1").arg(i));
-            QVERIFY(field);
-            QCOMPARE(field->property("text").toString(), QString("255"));
-            const double room = field->width() - field->property("leftPadding").toDouble()
-                                - field->property("rightPadding").toDouble();
-            QVERIFY2(field->property("contentWidth").toDouble() <= room,
-                     qPrintable(QString("field %1: text %2 px, room %3 px").arg(i)
-                                    .arg(field->property("contentWidth").toDouble()).arg(room)));
-        }
+        QQuickItem *pk = picker(ui.window);
+        QVERIFY(pk);
+        pk->setProperty("color", QColor("#102030"));
+        QQuickItem *hex = findItem(ui.window->contentItem(), "hexField");
+        QVERIFY(hex);
+        QTRY_COMPARE(hex->property("text").toString(), QString("#102030"));
+        hex->forceActiveFocus();
+        hex->setProperty("text", " 00e5ff ");
+        QTest::keyClick(ui.window, Qt::Key_Return);
+        QCOMPARE(pk->property("color").value<QColor>(), QColor("#00e5ff"));
+        QTRY_COMPARE(hex->property("text").toString(), QString("#00E5FF"));
+        hex->forceActiveFocus();
+        hex->setProperty("text", "#12345");
+        QTest::keyClick(ui.window, Qt::Key_Return);
+        QCOMPARE(pk->property("color").value<QColor>(), QColor("#00e5ff"));
+        QCOMPARE(hex->property("text").toString(), QString("#00E5FF"));
+    }
+
+    void uiRgbSliderDragIsOneUndoStep()
+    {
+        Ui ui;
+        ui.window->resize(1280, 1100);
+        QTest::qWait(200);
+        QQuickItem *slider = findItem(ui.window->contentItem(), "rgbSlider0");
+        QVERIFY(slider && slider->isVisible());
+        QVERIFY(!ui.run.backend->canUndo());
+        auto at = [&](double f) { return slider->mapToScene(QPointF(slider->width() * f, slider->height() / 2)).toPoint(); };
+        QTest::mousePress(ui.window, Qt::LeftButton, {}, at(0.1));
+        for (double f = 0.2; f <= 0.8; f += 0.1)
+            QTest::mouseMove(ui.window, at(f));
+        QTest::mouseRelease(ui.window, Qt::LeftButton, {}, at(0.8));
+        QVERIFY(ui.run.backend->canUndo());
+        ui.run.backend->undo();
+        QVERIFY(!ui.run.backend->canUndo());
+    }
+
+    void uiRgbValueKeys()
+    {
+        Ui ui;
+        ui.window->resize(1280, 1100);
+        QTest::qWait(200);
+        QQuickItem *pk = picker(ui.window);
+        pk->setProperty("color", QColor(10, 100, 30));
+        QQuickItem *value = findItem(ui.window->contentItem(), "rgbValue1");
+        QVERIFY(value && value->isVisible());
+        QTRY_COMPARE(value->property("text").toString(), QString("100"));
+        QTest::mouseClick(ui.window, Qt::LeftButton, {}, value->mapToScene(QPointF(value->width() / 2, value->height() / 2)).toPoint());
+        QQuickItem *edit = findItem(ui.window->contentItem(), "rgbEdit1");
+        QVERIFY(edit && edit->isVisible());
+        QTRY_VERIFY(edit->hasActiveFocus());
+        QTest::keyClick(ui.window, Qt::Key_Up);
+        QCOMPARE(pk->property("color").value<QColor>().green(), 101);
+        QTest::keyClick(ui.window, Qt::Key_Up, Qt::ShiftModifier);
+        QCOMPARE(pk->property("color").value<QColor>().green(), 111);
+        QTest::keyClick(ui.window, Qt::Key_Escape);
+        QCOMPARE(pk->property("color").value<QColor>().green(), 100);
+        QTRY_VERIFY(!findItem(ui.window->contentItem(), "rgbEdit1") || !findItem(ui.window->contentItem(), "rgbEdit1")->isVisible());
+        QTest::mouseClick(ui.window, Qt::LeftButton, {}, value->mapToScene(QPointF(value->width() / 2, value->height() / 2)).toPoint());
+        edit = findItem(ui.window->contentItem(), "rgbEdit1");
+        QTRY_VERIFY(edit && edit->hasActiveFocus());
+        QTest::keyClick(ui.window, Qt::Key_Down);
+        QTest::keyClick(ui.window, Qt::Key_Return);
+        QCOMPARE(pk->property("color").value<QColor>().green(), 99);
+        QTRY_COMPARE(value->property("text").toString(), QString("99"));
+    }
+
+    void uiRgbLabelsTranslated()
+    {
+        Ui ui;
+        QCoreApplication::installTranslator(&ui.translator);
+        QObject::connect(&ui.translator, &Translator::changed, &ui.engine, &QQmlEngine::retranslate);
+        auto labels = [&] {
+            QStringList l;
+            for (int i = 0; i < 3; ++i) {
+                QQuickItem *it = findItem(ui.window->contentItem(), QString("rgbLabel%1").arg(i));
+                l << (it ? it->property("text").toString() : QString("?"));
+            }
+            return l;
+        };
+        QCOMPARE(labels(), (QStringList{"R", "G", "B"}));
+        write(ui.langDir.path() + "/language", "fr\n");
+        QTRY_COMPARE(labels(), (QStringList{"R", "V", "B"}));
+        QCoreApplication::removeTranslator(&ui.translator);
+    }
+
+    // Apart from the hex field, no boxed TextField is visible in the picker while idle.
+    void uiRgbNoBoxedFields()
+    {
+        Ui ui;
+        QQuickItem *pk = picker(ui.window);
+        QVERIFY(pk);
+        std::function<void(QQuickItem *)> walk = [&](QQuickItem *item) {
+            if (item->isVisible() && item->inherits("QQuickTextField")) {
+                QVERIFY2(item->objectName() == "hexField", qPrintable(item->objectName()));
+                auto *bg = item->property("background").value<QQuickItem *>();
+                QVERIFY(!bg || bg->property("color").value<QColor>().alpha() == 0
+                        || !bg->property("visible").toBool() || bg->width() == 0);
+            }
+            for (QQuickItem *child : item->childItems())
+                walk(child);
+        };
+        walk(pk);
+        QVERIFY(findItem(ui.window->contentItem(), "hexField"));
     }
 
     // Undo must be visible, not only Ctrl+Z.
