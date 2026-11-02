@@ -61,6 +61,7 @@ Item {
         delegate: Item {
             id: key
             required property var modelData
+            objectName: "key_" + modelData.id
             readonly property rect r: view.keyRect(modelData)
             readonly property bool selected: backend.selection.indexOf(modelData.id) >= 0
             // Key of the open group: a lighter veil and a thin outline, apart from the selection.

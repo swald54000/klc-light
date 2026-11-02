@@ -82,7 +82,7 @@ ApplicationWindow {
             // layers and settings sit below it.
             Pane {
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(width * 0.36, win.height * 0.45)
+                Layout.preferredHeight: Math.min(width * 0.36, win.height * 0.38)
                 padding: 6
                 KeyboardView { objectName: "keyboardView"; anchors.fill: parent }
             }
@@ -132,11 +132,15 @@ ApplicationWindow {
                 Pane {
                     Layout.preferredWidth: 240
                     Layout.fillHeight: true
+                    padding: 6
                     ScrollView {
+                        id: leftScroll
+                        objectName: "leftScroll"
                         anchors.fill: parent
                         contentWidth: availableWidth
                         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-                        GroupList { width: parent.width }
+                        // Fills the pane, or scrolls when even the minimum does not fit.
+                        GroupList { width: parent.width; height: Math.max(implicitHeight, leftScroll.availableHeight) }
                     }
                 }
 

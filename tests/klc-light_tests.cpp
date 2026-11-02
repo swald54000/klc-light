@@ -2112,7 +2112,6 @@ private slots:
     void uiGroupRowOpens()
     {
         Ui ui;
-        ui.window->resize(1280, 1000); // the column scrolls in a short window
         makeGroup(ui.run.backend, "One", {"KEY_Q"});
         makeGroup(ui.run.backend, "Two", {"KEY_W"});
         ui.run.backend->openBase();
@@ -2132,6 +2131,161 @@ private slots:
         QQuickItem *label = findItem(ui.window->contentItem(), "animatedCount");
         QVERIFY(label);
         QTRY_VERIFY(label->property("text").toString().contains("2 / 6"));
+    }
+
+    // Whether an item lies fully inside another one's visible area.
+    static bool within(QQuickItem *item, QQuickItem *viewport)
+    {
+        if (!item || !viewport || !item->isVisible())
+            return false;
+        const QRectF r = item->mapRectToItem(viewport, QRectF(0, 0, item->width(), item->height()));
+        return r.top() >= -0.5 && r.bottom() <= viewport->height() + 0.5 && r.left() >= -0.5 && r.right() <= viewport->width() + 0.5;
+    }
+
+    // At the default 1280x640 the whole left column is on screen without scrolling.
+    void uiLeftColumnFitsDefaultWindow()
+    {
+        Ui ui;
+        QCOMPARE(ui.window->size(), QSize(1280, 640));
+        makeGroup(ui.run.backend, "One", {"KEY_Q"});
+        makeGroup(ui.run.backend, "Two", {"KEY_W"});
+        ui.run.backend->openBase();
+        QTest::qWait(300);
+        QQuickItem *root = ui.window->contentItem();
+        QQuickItem *scroll = findItem(root, "leftScroll");
+        QQuickItem *list = findItem(root, "groupList");
+        QVERIFY(scroll && list);
+        for (const char *name : {"baseRow", "createFromSelectionButton", "animatedCount", "reactiveRow", "selectKeysHint"})
+            QVERIFY2(within(findItem(root, name), scroll), name);
+        for (const char *name : {"groupRow0", "groupRow1"}) {
+            QVERIFY2(within(findItem(root, name), scroll), name);
+            QVERIFY2(within(findItem(root, name), list), name);
+        }
+        QQuickItem *bar = findItem(root, "actionBar");
+        QVERIFY(within(bar, root));
+    }
+
+    void uiBaseRowShowsType()
+    {
+        Ui ui;
+        makeGroup(ui.run.backend, "One", {"KEY_Q"}); // leaves the group open, not the base
+        QCOMPARE(ui.run.backend->currentKind(), QString("group"));
+        QQuickItem *row = nullptr;
+        QTRY_VERIFY((row = findItem(ui.window->contentItem(), "baseRow")) != nullptr);
+        QVERIFY2(QRegularExpression("static|fixe", QRegularExpression::CaseInsensitiveOption)
+                     .match(row->property("text").toString()).hasMatch(), qPrintable(row->property("text").toString()));
+        ui.run.backend->setBaseType("wave");
+        QTRY_VERIFY2(QRegularExpression("wave|vague", QRegularExpression::CaseInsensitiveOption)
+                         .match(row->property("text").toString()).hasMatch(), qPrintable(row->property("text").toString()));
+    }
+
+    void uiRenameGroup()
+    {
+        Ui ui;
+        makeGroup(ui.run.backend, "One", {"KEY_Q"});
+        makeGroup(ui.run.backend, "Two", {"KEY_W"});
+        QQuickItem *field = nullptr;
+        QTRY_VERIFY((field = findItem(ui.window->contentItem(), "groupNameField")) && field->isVisible());
+        field->setProperty("text", "Renamed");
+        QMetaObject::invokeMethod(field, "editingFinished");
+        QTRY_COMPARE(ui.run.backend->groups().at(1).toMap().value("name").toString(), QString("Renamed"));
+        QQuickItem *error = findItem(ui.window->contentItem(), "groupNameError");
+        QVERIFY(error && !error->isVisible());
+        // A name already taken is refused, and the reason shows under the field.
+        field->setProperty("text", "One");
+        QMetaObject::invokeMethod(field, "editingFinished");
+        QTRY_VERIFY(error->isVisible());
+        QVERIFY2(error->property("text").toString().contains("One"), qPrintable(error->property("text").toString()));
+        QCOMPARE(ui.run.backend->groups().at(1).toMap().value("name").toString(), QString("Renamed"));
+    }
+
+    void uiBehaviorRefusalShowsError()
+    {
+        Ui ui;
+        const QStringList keys = {"KEY_Q", "KEY_W", "KEY_E", "KEY_R", "KEY_T", "KEY_Y", "KEY_U"};
+        for (int i = 0; i < 7; ++i) {
+            makeGroup(ui.run.backend, QString("G%1").arg(i), {keys.at(i)});
+            if (i < 6)
+                QVERIFY(ui.run.backend->setBehavior("pulse").isEmpty());
+        }
+        QQuickItem *box = nullptr;
+        QTRY_VERIFY((box = findItem(ui.window->contentItem(), "behaviorBox")) && box->isVisible());
+        box->setProperty("currentIndex", 1); // Pulse
+        QMetaObject::invokeMethod(box, "activated", Q_ARG(int, 1));
+        QQuickItem *error = findItem(ui.window->contentItem(), "behaviorError");
+        QTRY_VERIFY(error && error->isVisible());
+        QVERIFY(error->property("text").toString().contains("6"));
+        QCOMPARE(ui.run.backend->current().value("behavior").toString(), QString("static"));
+        // The box goes back to what the group really is.
+        QTRY_COMPARE(box->property("currentIndex").toInt(), 0);
+    }
+
+    void uiRemoveSelectedKeys()
+    {
+        Ui ui;
+        makeGroup(ui.run.backend, "Trio", {"KEY_Q", "KEY_W", "KEY_E"});
+        ui.run.backend->select({"KEY_Q"}, false);
+        QQuickItem *button = nullptr;
+        QTRY_VERIFY((button = findItem(ui.window->contentItem(), "removeKeysButton")) && button->isVisible() && button->isEnabled());
+        QTest::mouseClick(ui.window, Qt::LeftButton, {}, itemCentre(button));
+        QTRY_COMPARE(ui.run.backend->groups().at(0).toMap().value("count").toInt(), 2);
+    }
+
+    void uiDeleteGroup()
+    {
+        Ui ui;
+        makeGroup(ui.run.backend, "Gone", {"KEY_Q"});
+        QQuickItem *button = nullptr;
+        QTRY_VERIFY((button = findItem(ui.window->contentItem(), "deleteGroupButton")) && button->isVisible());
+        QTest::mouseClick(ui.window, Qt::LeftButton, {}, itemCentre(button));
+        QTRY_VERIFY(ui.run.backend->groups().isEmpty());
+        QCOMPARE(ui.run.backend->currentKind(), QString("base"));
+    }
+
+    void uiAddToGroupBox()
+    {
+        Ui ui;
+        makeGroup(ui.run.backend, "A", {"KEY_Q"});
+        ui.run.backend->openBase();
+        ui.run.backend->select({"KEY_W"}, false);
+        QQuickItem *box = nullptr;
+        QTRY_VERIFY((box = findItem(ui.window->contentItem(), "addToGroupBox")) && box->isVisible());
+        QMetaObject::invokeMethod(box, "activated", Q_ARG(int, 0));
+        QTRY_COMPARE(ui.run.backend->groups().at(0).toMap().value("count").toInt(), 2);
+    }
+
+    void uiEscapeReturnsToBase()
+    {
+        Ui ui;
+        makeGroup(ui.run.backend, "A", {"KEY_Q"});
+        ui.run.backend->select({"KEY_Q", "KEY_W"}, false);
+        QTest::keyClick(ui.window, Qt::Key_Escape);
+        QTRY_COMPARE(ui.run.backend->currentKind(), QString("base"));
+        QVERIFY(ui.run.backend->selection().isEmpty());
+    }
+
+    void uiGroupKeysHighlighted()
+    {
+        Ui ui;
+        makeGroup(ui.run.backend, "A", {"KEY_Q", "KEY_W"});
+        QQuickItem *q = nullptr, *e = nullptr;
+        QTRY_VERIFY((q = findItem(ui.window->contentItem(), "key_KEY_Q")) != nullptr);
+        e = findItem(ui.window->contentItem(), "key_KEY_E");
+        QVERIFY(e);
+        QTRY_VERIFY(q->property("inGroup").toBool());
+        QVERIFY(!e->property("inGroup").toBool());
+        ui.run.backend->openBase();
+        QTRY_VERIFY(!q->property("inGroup").toBool());
+    }
+
+    void uiSelectKeysHint()
+    {
+        Ui ui;
+        QQuickItem *hint = findItem(ui.window->contentItem(), "selectKeysHint");
+        QVERIFY(hint);
+        QTRY_VERIFY(hint->isVisible());
+        ui.run.backend->selectGroup("wasd");
+        QTRY_VERIFY(!hint->isVisible());
     }
 
     // "255" must fit in the R, G and B fields (it showed "55").

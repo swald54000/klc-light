@@ -197,6 +197,12 @@ QString Backend::currentKind() const {
     return "base";
 }
 
+QVariantMap Backend::baseSummary() const {
+    const QColor color = !m_doc.base.steps.isEmpty() && m_doc.base.type == "wave" ? m_doc.base.steps.first().color
+                                                                                  : m_doc.base.color;
+    return {{"type", m_doc.base.type}, {"color", color}};
+}
+
 QStringList Backend::groupKeys() const {
     return m_kind == Kind::Group ? m_doc.groups.value(m_group).keys : QStringList();
 }

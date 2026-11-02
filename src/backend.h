@@ -31,6 +31,7 @@ class Backend : public QObject {
     Q_PROPERTY(QVariantList groups READ groups NOTIFY profileChanged)
     Q_PROPERTY(QString currentKind READ currentKind NOTIFY currentChanged)
     Q_PROPERTY(int currentGroup READ currentGroup NOTIFY currentChanged)
+    Q_PROPERTY(QVariantMap baseSummary READ baseSummary NOTIFY profileChanged)
     Q_PROPERTY(QStringList groupKeys READ groupKeys NOTIFY currentChanged)
     Q_PROPERTY(int animatedCount READ animatedCount NOTIFY profileChanged)
     Q_PROPERTY(QVariantMap current READ current NOTIFY profileChanged)
@@ -66,6 +67,7 @@ public:
     QVariantList groups() const; // [{name, behavior, count, color}]
     QString currentKind() const;
     int currentGroup() const { return m_kind == Kind::Group ? m_group : -1; }
+    QVariantMap baseSummary() const; // {type, color}: shown whichever panel is open
     QStringList groupKeys() const;
     int animatedCount() const; // controller slots in use, the animated base included
     QVariantMap current() const;
