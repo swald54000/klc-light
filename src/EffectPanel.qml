@@ -12,8 +12,14 @@ GridLayout {
     readonly property string kind: backend.currentKind
     // The open group animates: its steps are edited, not one color.
     readonly property bool animated: kind === "group" && cur.behavior !== "static"
-    // Index of the step whose color the picker edits.
+    // Index of the step whose color the picker edits: the first one of each newly opened
+    // group or base.
     property int stepIndex: 0
+    readonly property int group: backend.currentGroup
+    onGroupChanged: stepIndex = 0
+    // A removed step may have been the selected one: keep to the steps that remain.
+    readonly property int stepCount: (cur.steps || []).length
+    onStepCountChanged: if (stepCount > 0 && stepIndex >= stepCount) stepIndex = stepCount - 1
 
     columns: width > 760 ? 3 : 1
     columnSpacing: 24

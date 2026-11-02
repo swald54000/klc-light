@@ -2806,6 +2806,50 @@ private slots:
         QCOMPARE(findItem(ui.window->contentItem(), "rgbValue1")->property("text").toString(), QString("128"));
     }
 
+    static int groupIndex(Backend *backend, const QString &name)
+    {
+        const auto &groups = backend->document().groups;
+        for (int i = 0; i < groups.size(); ++i)
+            if (groups[i].name == name)
+                return i;
+        return -1;
+    }
+
+    // The picker edits a step that exists: after moving to another animated group, and after
+    // the selected step is removed.
+    void uiPickerStepFollowsGroup()
+    {
+        Ui ui;
+        Backend *b = ui.run.backend;
+        makeGroup(b, "A", {"KEY_Q"});
+        QCOMPARE(b->setBehavior("pulse"), QString());
+        b->addStep();
+        b->addStep();
+        makeGroup(b, "B", {"KEY_W"});
+        QCOMPARE(b->setBehavior("pulse"), QString());
+        const int a = groupIndex(b, "A"), bi = groupIndex(b, "B");
+        b->openGroup(a);
+        QCOMPARE(b->document().groups[a].steps.size(), 3);
+        QQuickItem *panel = findItem(ui.window->contentItem(), "effectPanel");
+        QQuickItem *pk = picker(ui.window);
+        QVERIFY(panel && pk);
+        panel->setProperty("stepIndex", 2); // the third step's swatch, clicked
+        b->openGroup(bi);
+        QTRY_COMPARE(b->currentGroup(), bi);
+        QCOMPARE(b->document().groups[bi].steps.size(), 1);
+        QMetaObject::invokeMethod(pk, "picked", Q_ARG(QColor, QColor("#ff0000")));
+        QCOMPARE(b->document().groups[bi].steps[0].color, QColor("#ff0000"));
+
+        // Remove the selected last step, then pick: the new last step takes the color.
+        b->openGroup(a);
+        panel->setProperty("stepIndex", 2);
+        b->removeStep(2);
+        QCOMPARE(b->document().groups[a].steps.size(), 2);
+        QMetaObject::invokeMethod(pk, "picked", Q_ARG(QColor, QColor("#00ff00")));
+        QCOMPARE(b->document().groups[a].steps[1].color, QColor("#00ff00"));
+        QCOMPARE(panel->property("stepIndex").toInt(), 1);
+    }
+
     void uiRgbSliderDragIsOneUndoStep()
     {
         Ui ui;

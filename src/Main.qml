@@ -156,7 +156,7 @@ ApplicationWindow {
                         // Nothing scrolls sideways; the hidden horizontal bar still caught clicks
                         // on the bottom 16 px of the panel.
                         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-                        EffectPanel { width: parent.width }
+                        EffectPanel { objectName: "effectPanel"; width: parent.width }
                     }
                 }
             }
