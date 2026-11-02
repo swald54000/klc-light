@@ -27,6 +27,9 @@ int runCommand(int argc, char *argv[]) {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     QGuiApplication app(argc, argv);
     QStringList args = app.arguments().mid(1);
+    // The first run's migration may name a profile; messages are read by the user too.
+    Translator translator;
+    app.installTranslator(&translator);
 
     HidapiTransport transport;
     SudoBinder binder;
