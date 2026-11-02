@@ -667,26 +667,6 @@ private slots:
         QVERIFY(!profileFromLegacy("nope", QString()));
     }
 
-    void themeProfileOrder()
-    {
-        QTemporaryDir dir;
-        const ThemePaths paths = fakeTheme(dir, "tron");
-        const QByteArray klc = "{\"version\":1,\"base\":{\"type\":\"static\",\"color\":\"#112233\"}}";
-        write(paths.stateTheme + "/keyboard.rgb", "#445566\n");
-        QCOMPARE(resolveProfile(paths).profile->base.color, QColor("#445566"));
-        write(paths.stateTheme + "/keyboard.effect", "tron\n");
-        QCOMPARE(resolveProfile(paths).profile->effects.size(), 6);
-        write(paths.stateTheme + "/keyboard.klc.json", klc);
-        QCOMPARE(resolveProfile(paths).profile->base.color, QColor("#112233"));
-        QDir().mkpath(paths.userThemes + "/tron");
-        write(paths.userThemes + "/tron/keyboard.klc.json", QByteArray(klc).replace("112233", "778899"));
-        const Resolved resolved = resolveProfile(paths);
-        QCOMPARE(resolved.profile->base.color, QColor("#778899"));
-        QCOMPARE(resolved.source, paths.userThemes + "/tron/keyboard.klc.json");
-        QCOMPARE(resolved.savePath, paths.userThemes + "/tron/keyboard.klc.json");
-        QCOMPARE(resolved.themeName, QString("tron"));
-    }
-
     static Document libDoc(const QString &name, const QString &color = "#112233")
     {
         Profile profile;
@@ -912,47 +892,6 @@ private slots:
         const Profile profile = lighting(*lib.load("Default", &errors));
         QCOMPARE(profile.base.type, QString("static"));
         QCOMPARE(profile.base.color, QColor(Qt::black));
-    }
-
-    void themeProfileNothing()
-    {
-        QTemporaryDir dir;
-        const Resolved resolved = resolveProfile(fakeTheme(dir, "tokyo-night"));
-        QVERIFY(!resolved.profile);
-        QVERIFY(resolved.errors.isEmpty());
-        QVERIFY(resolved.source.isEmpty());
-    }
-
-    void themeProfileNoOmarchy()
-    {
-        QTemporaryDir dir;
-        ThemePaths paths = fakeTheme(dir, "x");
-        QFile::remove(paths.themeName);
-        const Resolved resolved = resolveProfile(paths);
-        QVERIFY(!resolved.profile);
-        QVERIFY(resolved.errors.join(" ").contains("theme.name"));
-    }
-
-    void themeProfileInvalid()
-    {
-        QTemporaryDir dir;
-        const ThemePaths paths = fakeTheme(dir, "tron");
-        write(paths.stateTheme + "/keyboard.klc.json", "{\"version\":1,\"base\":{\"type\":\"static\",\"color\":\"#112233\"},\"keys\":{\"KEY_NOPE\":\"#FF0000\"}}");
-        const Resolved resolved = resolveProfile(paths);
-        QVERIFY(!resolved.profile);
-        QVERIFY(resolved.errors.join(" ").contains("KEY_NOPE"));
-    }
-
-    void themeProfileSaveStock()
-    {
-        QTemporaryDir dir;
-        const ThemePaths paths = fakeTheme(dir, "tokyo-night");
-        const Resolved resolved = resolveProfile(paths);
-        Profile profile;
-        profile.base.color = QColor("#00E5FF");
-        QString error;
-        QVERIFY2(saveProfile(profile, resolved.savePath, &error), qPrintable(error));
-        QCOMPARE(QDir(paths.userThemes + "/tokyo-night").entryList(QDir::Files | QDir::Hidden), QStringList{"keyboard.klc.json"});
     }
 
     void themeProfileAtomic()
@@ -1311,77 +1250,273 @@ private slots:
         QCOMPARE(run.backend->selection(), QStringList{"KEY_Q"});
     }
 
-    void backendPaint()
+
+    // Makes a group from the given keys and leaves it open.
+    static void makeGroup(Backend *backend, const QString &name, const QStringList &keys)
+    {
+        backend->select(keys, false);
+        QCOMPARE(backend->createGroup(name), QString());
+    }
+
+    void backendClickGroupedKeyOpensGroup()
+    {
+        EditorRun run;
+        makeGroup(run.backend, "ZQSD", {"KEY_W", "KEY_A", "KEY_S", "KEY_D"});
+        run.backend->openBase();
+        run.backend->select({"KEY_A"}, false);
+        QCOMPARE(run.backend->currentKind(), QString("group"));
+        QCOMPARE(run.backend->currentGroup(), 0);
+        QCOMPARE(run.backend->groupKeys().size(), 4);
+        QCOMPARE(run.backend->selection(), QStringList{"KEY_A"});
+    }
+
+    void backendClickFreeKeyOffersGroup()
+    {
+        EditorRun run;
+        run.backend->select({"KEY_ESC"}, false);
+        QCOMPARE(run.backend->currentKind(), QString("selection"));
+        QCOMPARE(run.backend->currentGroup(), -1);
+        const QString label = KeyLabels::fromRmlvo("fr", "").label(*Layout::gs76().byId("KEY_ESC"));
+        QVERIFY(!label.isEmpty());
+        QCOMPARE(run.backend->defaultGroupName(), label);
+        run.backend->select({"KEY_ESC", "KEY_Q"}, false);
+        QCOMPARE(run.backend->defaultGroupName(), QString("Group 1"));
+    }
+
+    void backendCtrlClickOutsideGroup()
+    {
+        EditorRun run;
+        makeGroup(run.backend, "ZQSD", {"KEY_W", "KEY_A", "KEY_S", "KEY_D"});
+        run.backend->select({"KEY_A"}, false);
+        run.backend->select({"KEY_S"}, true);
+        QCOMPARE(run.backend->currentKind(), QString("group"));
+        QCOMPARE(run.backend->selection(), QStringList({"KEY_A", "KEY_S"}));
+        run.backend->select({"KEY_ESC"}, true);
+        QCOMPARE(run.backend->currentKind(), QString("selection"));
+        QCOMPARE(run.backend->currentGroup(), -1);
+        // The quick buttons are a free selection too, unless every key is in the open group.
+        run.backend->openGroup(0);
+        run.backend->selectGroup("wasd");
+        QCOMPARE(run.backend->currentKind(), QString("group"));
+        run.backend->openBase();
+        run.backend->selectGroup("wasd");
+        QCOMPARE(run.backend->currentKind(), QString("selection"));
+    }
+
+    void backendCreateGroupMovesKeys()
+    {
+        EditorRun run;
+        makeGroup(run.backend, "ZQSD", {"KEY_W", "KEY_A", "KEY_S", "KEY_D"});
+        run.backend->select({"KEY_W", "KEY_ESC"}, false);
+        QCOMPARE(run.backend->currentKind(), QString("selection"));
+        QCOMPARE(run.backend->createGroup("Mix"), QString());
+        const Document &doc = run.backend->document();
+        QCOMPARE(doc.groups.size(), 2);
+        QCOMPARE(doc.groups[0].keys, QStringList({"KEY_A", "KEY_S", "KEY_D"}));
+        QCOMPARE(doc.groups[1].name, QString("Mix"));
+        QCOMPARE(doc.groups[1].keys, QStringList({"KEY_W", "KEY_ESC"}));
+        QCOMPARE(run.backend->currentKind(), QString("group"));
+        QCOMPARE(run.backend->currentGroup(), 1);
+        QCOMPARE(run.backend->groups().size(), 2);
+        QCOMPARE(run.backend->groups()[1].toMap()["count"].toInt(), 2);
+        // Emptied, a group is removed.
+        run.backend->select({"KEY_A", "KEY_S", "KEY_D"}, false);
+        run.backend->addSelectionToGroup(1);
+        QCOMPARE(run.backend->document().groups.size(), 1);
+        QCOMPARE(run.backend->document().groups[0].keys.size(), 5);
+        QCOMPARE(run.backend->currentKind(), QString("group"));
+        QCOMPARE(run.backend->currentGroup(), 0);
+        // Taking keys out of the open group frees them; all of them removes the group.
+        run.backend->select({"KEY_W"}, false);
+        run.backend->removeSelectionFromGroup();
+        QCOMPARE(run.backend->document().groups[0].keys.size(), 4);
+        QCOMPARE(run.backend->document().groupOf("KEY_W"), -1);
+        run.backend->select({"KEY_A", "KEY_S", "KEY_D", "KEY_ESC"}, true);
+        QCOMPARE(run.backend->currentKind(), QString("group"));
+        run.backend->removeSelectionFromGroup();
+        QVERIFY(run.backend->document().groups.isEmpty());
+        QCOMPARE(run.backend->currentKind(), QString("base"));
+    }
+
+    void backendGroupNameRules()
+    {
+        EditorRun run;
+        makeGroup(run.backend, "ZQSD", {"KEY_W", "KEY_A", "KEY_S", "KEY_D"});
+        makeGroup(run.backend, "Esc", {"KEY_ESC"});
+        const QJsonObject before = toJson(run.backend->document());
+        run.backend->select({"KEY_Q"}, false);
+        for (const QString &name : {QString(), QString("  "), QString("ZQSD"), QString(" ZQSD ")})
+            QVERIFY2(!run.backend->createGroup(name).isEmpty(), qPrintable(name));
+        QVERIFY(!run.backend->renameGroup(1, "").isEmpty());
+        QVERIFY(!run.backend->renameGroup(1, "ZQSD").isEmpty());
+        QCOMPARE(toJson(run.backend->document()), before);
+        QVERIFY(run.backend->canUndo());
+        run.backend->undo();
+        run.backend->undo();
+        QVERIFY(!run.backend->canUndo());
+        run.backend->redo();
+        run.backend->redo();
+        QCOMPARE(run.backend->renameGroup(1, " Échap "), QString());
+        QCOMPARE(run.backend->document().groups[1].name, QString("Échap"));
+        QCOMPARE(run.backend->renameGroup(1, "Échap"), QString());
+    }
+
+    void backendBehaviorSwitch()
+    {
+        EditorRun run;
+        makeGroup(run.backend, "ZQSD", {"KEY_W", "KEY_A", "KEY_S", "KEY_D"});
+        run.backend->setColor(QColor("#FF0000"));
+        QCOMPARE(run.backend->setBehavior("pulse"), QString());
+        const Group &pulse = run.backend->document().groups[0];
+        QCOMPARE(pulse.behavior, QString("pulse"));
+        QCOMPARE(pulse.steps.size(), 1);
+        QCOMPARE(pulse.steps[0].color, QColor("#FF0000"));
+        QVERIFY(validate(run.backend->document(), Layout::gs76()).isEmpty());
+        QCOMPARE(run.backend->current()["behavior"].toString(), QString("pulse"));
+        run.backend->setStepColor(0, QColor("#00FF00"));
+        QCOMPARE(run.backend->setBehavior("wave"), QString());
+        QVERIFY(validate(run.backend->document(), Layout::gs76()).isEmpty());
+        QCOMPARE(run.backend->setBehavior("static"), QString());
+        QCOMPARE(run.backend->document().groups[0].color, QColor("#00FF00"));
+        QCOMPARE(run.backend->current()["color"].value<QColor>(), QColor("#00FF00"));
+    }
+
+    void backendAnimatedLimit()
+    {
+        EditorRun run;
+        for (int i = 1; i <= 7; ++i)
+            makeGroup(run.backend, QString("F%1").arg(i), {QString("KEY_F%1").arg(i)});
+        for (int i = 0; i < 6; ++i) {
+            run.backend->openGroup(i);
+            QCOMPARE(run.backend->setBehavior("pulse"), QString());
+        }
+        QCOMPARE(run.backend->animatedCount(), 6);
+        run.backend->openGroup(6);
+        const QJsonObject before = toJson(run.backend->document());
+        QCOMPARE(run.backend->setBehavior("pulse"), QString("At most 6 animated groups (controller limit)"));
+        QCOMPARE(toJson(run.backend->document()), before);
+        QCOMPARE(run.backend->animatedCount(), 6);
+    }
+
+    void backendPaintGroup()
     {
         EditorRun run;
         QVERIFY(!run.backend->dirty());
-        run.backend->setCurrentLayer(1);
-        run.backend->select({"KEY_Q"}, false);
+        makeGroup(run.backend, "ZQSD", {"KEY_W", "KEY_A", "KEY_S", "KEY_D"});
         run.backend->setColor(QColor("#FF0000"));
-        QCOMPARE(run.backend->profile().keys.value("KEY_Q"), QColor("#FF0000"));
+        QCOMPARE(run.backend->document().groups[0].color, QColor("#FF0000"));
+        QCOMPARE(run.backend->previewColor("KEY_W", 0), QColor("#FF0000"));
         QVERIFY(run.backend->dirty());
-        QCOMPARE(run.backend->previewColor("KEY_Q", 0), QColor("#FF0000"));
+        // A free selection has no color of its own: nothing is painted.
+        run.backend->select({"KEY_ESC"}, false);
+        const QJsonObject before = toJson(run.backend->document());
+        run.backend->setColor(QColor("#00FF00"));
+        QCOMPARE(toJson(run.backend->document()), before);
+    }
+
+    void backendGroupAnimation()
+    {
+        EditorRun run;
+        run.backend->selectGroup("function");
+        QCOMPARE(run.backend->createGroup("F1–F12"), QString());
+        QCOMPARE(run.backend->setBehavior("wave"), QString());
+        QCOMPARE(lighting(run.backend->document()).effects.size(), 1);
+        QCOMPARE(lighting(run.backend->document()).effects.first().keys.size(), 12);
+        run.backend->setStepColor(0, QColor("#ABCDEF"));
+        QCOMPARE(run.backend->document().groups[0].steps.first().color, QColor("#ABCDEF"));
+        QCOMPARE(run.backend->document().groups[0].start, QColor("#ABCDEF"));
+        run.backend->addStep();
+        QCOMPARE(run.backend->document().groups[0].steps.size(), 2);
+        run.backend->setStepDuration(1, 77);
+        QCOMPARE(run.backend->document().groups[0].steps[1].duration, 77);
+        run.backend->removeStep(0);
+        QCOMPARE(run.backend->document().groups[0].start, run.backend->document().groups[0].steps.first().color);
+        run.backend->setOrigin("aqua-3");
+        QCOMPARE(run.backend->current()["origin"].toString(), QString("aqua-3"));
+        run.backend->deleteGroup(0);
+        QVERIFY(run.backend->document().groups.isEmpty());
+        QCOMPARE(run.backend->currentKind(), QString("base"));
     }
 
     void backendApplySaves()
     {
         EditorRun run;
-        run.backend->setCurrentLayer(0);
+        run.backend->openBase();
         run.backend->setColor(QColor("#123456"));
         run.backend->apply();
         QTRY_COMPARE(run.sent, 1);
         QTRY_VERIFY(!run.backend->busy());
         QVERIFY(!run.backend->dirty());
         QVERIFY(run.backend->error().isEmpty());
-        QFile file(run.paths.userThemes + "/tokyo-night/keyboard.klc.json");
-        QVERIFY(file.open(QIODevice::ReadOnly));
-        QVERIFY(file.readAll().contains("#123456"));
+        QStringList errors;
+        const auto saved = Library(run.dir.path() + "/klc").load("Default", &errors);
+        QVERIFY2(saved, qPrintable(errors.join("; ")));
+        QCOMPARE(saved->base.color, QColor("#123456"));
         QVERIFY(run.backend->cooldownMs() > 0);
     }
 
     void backendApplyInvalid()
     {
         EditorRun run;
-        for (int i = 1; i <= 7; ++i) {
-            run.backend->select({QString("KEY_F%1").arg(i)}, false);
-            run.backend->addEffect("pulse");
-        }
+        makeGroup(run.backend, "F1", {"KEY_F1"});
+        QCOMPARE(run.backend->setBehavior("pulse"), QString());
+        // The step and the closing transition back to the start add up past 65535.
+        run.backend->setStepDuration(0, 40000);
+        const QString file = Library(run.dir.path() + "/klc").entries().first().path;
+        QFile before(file);
+        QVERIFY(before.open(QIODevice::ReadOnly));
+        const QByteArray bytes = before.readAll();
         run.backend->apply();
-        QVERIFY(run.backend->error().contains("6"));
+        QVERIFY2(run.backend->error().contains("65535"), qPrintable(run.backend->error()));
         QTest::qWait(50);
         QCOMPARE(run.sent, 0);
-        QVERIFY(!QFile::exists(run.paths.userThemes + "/tokyo-night/keyboard.klc.json"));
+        QFile after(file);
+        QVERIFY(after.open(QIODevice::ReadOnly));
+        QCOMPARE(after.readAll(), bytes);
     }
 
-    void backendUndo()
+    void backendUndoGroups()
     {
         EditorRun run;
-        run.backend->setCurrentLayer(1);
-        run.backend->select({"KEY_Q"}, false);
-        run.backend->setColor(QColor("#FF0000"));
-        run.backend->setColor(QColor("#00FF00"));
+        const QJsonObject initial = toJson(run.backend->document());
+        makeGroup(run.backend, "ZQSD", {"KEY_W", "KEY_A", "KEY_S", "KEY_D"});
+        QCOMPARE(run.backend->renameGroup(0, "WASD"), QString());
+        run.backend->deleteGroup(0);
+        QVERIFY(run.backend->document().groups.isEmpty());
         run.backend->undo();
-        QCOMPARE(run.backend->profile().keys.value("KEY_Q"), QColor("#FF0000"));
+        QCOMPARE(run.backend->document().groups[0].name, QString("WASD"));
         run.backend->undo();
-        QVERIFY(!run.backend->profile().keys.contains("KEY_Q"));
+        QCOMPARE(run.backend->document().groups[0].name, QString("ZQSD"));
+        run.backend->undo();
+        QCOMPARE(toJson(run.backend->document()), initial);
+        QVERIFY(!run.backend->canUndo());
+        QCOMPARE(run.backend->currentKind(), QString("base"));
         run.backend->redo();
-        QCOMPARE(run.backend->profile().keys.value("KEY_Q"), QColor("#FF0000"));
+        QCOMPARE(run.backend->document().groups.size(), 1);
     }
 
-    void backendEffectLayer()
+    void backendBaseEffectShowsOnWholeKeyboard()
     {
-        EditorRun run;
-        run.backend->selectGroup("function");
-        run.backend->addEffect("wave");
-        QCOMPARE(run.backend->profile().effects.size(), 1);
-        QCOMPARE(run.backend->profile().effects.first().keys.size(), 12);
-        QCOMPARE(run.backend->currentLayer(), 2);
-        run.backend->setStepColor(0, QColor("#ABCDEF"));
-        QCOMPARE(run.backend->profile().effects.first().steps.first().color, QColor("#ABCDEF"));
-        run.backend->removeLayer(2);
-        QVERIFY(run.backend->profile().effects.isEmpty());
+        // The ares preset's effect groups cover almost every key, so a base effect has to
+        // replace them to be seen at all, as in Mystic Light; plain-color groups stay.
+        EditorRun run("ares");
+        QCOMPARE(run.backend->animatedCount(), 6);
+        makeGroup(run.backend, "Esc", {"KEY_ESC"});
+        const int groups = run.backend->document().groups.size();
+        run.backend->openBase();
+        run.backend->setBaseType("rainbow");
+        QVERIFY(lighting(run.backend->document()).effects.isEmpty());
+        // The animated base takes one of the controller's six slots.
+        QCOMPARE(run.backend->animatedCount(), 1);
+        QCOMPARE(run.backend->document().groups.size(), 1);
+        QCOMPARE(run.backend->document().groups[0].name, QString("Esc"));
+        QVERIFY(run.backend->notice().contains("6"));
+        QVERIFY(run.backend->previewColor("KEY_Q", 0) != run.backend->previewColor("KEY_Q", 900));
+        run.backend->undo();
+        QCOMPARE(run.backend->animatedCount(), 6);
+        QCOMPARE(run.backend->document().groups.size(), groups);
+        QCOMPARE(run.backend->document().base.type, QString("static"));
     }
-
 
     void backendKeysDoNotOverlap()
     {
@@ -1742,22 +1877,6 @@ private slots:
     }
 
 
-    void backendBaseEffectShowsOnWholeKeyboard()
-    {
-        // With the tron theme's ares profile, effect layers cover almost every key, so a
-        // base effect has to replace them to be seen at all, as in Mystic Light.
-        EditorRun run("ares");
-        QCOMPARE(run.backend->profile().effects.size(), 6);
-        run.backend->setCurrentLayer(0);
-        run.backend->setBaseType("rainbow");
-        QVERIFY(run.backend->profile().effects.isEmpty());
-        QVERIFY(run.backend->notice().contains("6"));
-        QVERIFY(run.backend->previewColor("KEY_Q", 0) != run.backend->previewColor("KEY_Q", 900));
-        run.backend->undo();
-        QCOMPARE(run.backend->profile().effects.size(), 6);
-        QCOMPARE(run.backend->profile().base.type, QString("static"));
-    }
-
 
     void layoutMatchesPhoto()
     {
@@ -1817,11 +1936,13 @@ private:
             name.write("tokyo-night\n");
             name.close();
             if (!effect.isEmpty()) {
-                QFile file(paths.stateTheme + "/keyboard.effect");
+                // The library is migrated on start: the theme's effect becomes its profile.
+                QDir().mkpath(paths.stockThemes + "/tokyo-night");
+                QFile file(paths.stockThemes + "/tokyo-night/keyboard.effect");
                 file.open(QIODevice::WriteOnly);
                 file.write(effect + "\n");
             }
-            backend = new Backend(paths, KeyLabels::fromRmlvo("fr", ""),
+            backend = new Backend(paths, dir.path() + "/klc", KeyLabels::fromRmlvo("fr", ""),
                                   [this](const QList<Packet> &) { ++sent; return ApplyResult{}; },
                                   dir.path() + "/colors.json");
         }

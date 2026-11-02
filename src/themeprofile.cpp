@@ -47,41 +47,6 @@ std::optional<Profile> readProfile(const QString &path, QStringList *errors) {
     return problems.isEmpty() ? profile : std::nullopt;
 }
 
-Resolved resolveProfile(const ThemePaths &paths) {
-    Resolved resolved;
-    resolved.themeName = readTrimmed(paths.themeName);
-    if (resolved.themeName.isEmpty()) {
-        resolved.errors.append(QString("no active Omarchy theme: %1 is missing").arg(paths.themeName));
-        return resolved;
-    }
-    resolved.savePath = paths.userThemes + "/" + resolved.themeName + "/keyboard.klc.json";
-
-    for (const QString &path : {resolved.savePath, paths.stateTheme + "/keyboard.klc.json"}) {
-        if (!QFileInfo::exists(path))
-            continue;
-        resolved.source = path;
-        resolved.profile = readProfile(path, &resolved.errors);
-        return resolved;
-    }
-
-    const QString effectPath = paths.stateTheme + "/keyboard.effect", rgbPath = paths.stateTheme + "/keyboard.rgb";
-    const QString effect = readTrimmed(effectPath), rgb = readTrimmed(rgbPath);
-    if (!effect.isEmpty()) {
-        if ((resolved.profile = profileFromLegacy(effect, QString()))) {
-            resolved.source = effectPath;
-            return resolved;
-        }
-        resolved.errors.append(QString("%1: unknown effect \"%2\"").arg(effectPath, effect));
-    }
-    if (!rgb.isEmpty()) {
-        if ((resolved.profile = profileFromLegacy(QString(), rgb)))
-            resolved.source = rgbPath;
-        else
-            resolved.errors.append(QString("%1: invalid color \"%2\"").arg(rgbPath, rgb));
-    }
-    return resolved;
-}
-
 bool saveProfile(const Profile &profile, const QString &path, QString *error) {
     if (!QDir().mkpath(QFileInfo(path).absolutePath())) {
         *error = QString("cannot create %1").arg(QFileInfo(path).absolutePath());

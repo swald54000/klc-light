@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QColor>
-#include <QFileSystemWatcher>
 #include <QObject>
 #include <QStringList>
 #include <QTimer>
@@ -10,25 +9,30 @@
 #include <optional>
 
 #include "device.h"
+#include "document.h"
 #include "keylabels.h"
+#include "library.h"
 #include "preview.h"
-#include "profile.h"
 #include "themeprofile.h"
 
 // Carried from the sending thread back to the editor.
 Q_DECLARE_METATYPE(ApplyResult)
 
-// The editor's state: the active theme's profile, the key selection, undo history, and
-// applying (save, then one send to the keyboard on a worker thread).
+// The editor's state: the open profile (a Document of named key groups), the key selection,
+// undo history, and applying (save to the library, then one send to the keyboard on a worker
+// thread).
 //
-// Layers, as the left column lists them: 0 = base, 1 = per-key colors, 2.. = effects,
-// last = reactive.
+// What the right panel edits, currentKind: "base" (the whole keyboard), "group" (the open
+// group, currentGroup), "selection" (free keys, not one group: offer to make a group of them)
+// or "reactive".
 class Backend : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantList keys READ keys CONSTANT)
-    Q_PROPERTY(QVariantList layers READ layers NOTIFY profileChanged)
-    Q_PROPERTY(int currentLayer READ currentLayer WRITE setCurrentLayer NOTIFY currentLayerChanged)
-    Q_PROPERTY(QString currentKind READ currentKind NOTIFY currentLayerChanged)
+    Q_PROPERTY(QVariantList groups READ groups NOTIFY profileChanged)
+    Q_PROPERTY(QString currentKind READ currentKind NOTIFY currentChanged)
+    Q_PROPERTY(int currentGroup READ currentGroup NOTIFY currentChanged)
+    Q_PROPERTY(QStringList groupKeys READ groupKeys NOTIFY currentChanged)
+    Q_PROPERTY(int animatedCount READ animatedCount NOTIFY profileChanged)
     Q_PROPERTY(QVariantMap current READ current NOTIFY profileChanged)
     Q_PROPERTY(QStringList selection READ selection NOTIFY selectionChanged)
     Q_PROPERTY(bool dirty READ dirty NOTIFY profileChanged)
@@ -41,51 +45,59 @@ class Backend : public QObject {
     Q_PROPERTY(int cooldownMs READ cooldownMs NOTIFY cooldownChanged)
     Q_PROPERTY(QString error READ error NOTIFY errorChanged)
     Q_PROPERTY(QString notice READ notice NOTIFY errorChanged)
-    Q_PROPERTY(QString themeName READ themeName NOTIFY themeChanged)
-    Q_PROPERTY(QString profilePath READ profilePath NOTIFY themeChanged)
     Q_PROPERTY(bool experimentalReactive READ experimentalReactive WRITE setExperimentalReactive NOTIFY profileChanged)
     Q_PROPERTY(QStringList savedColors READ savedColors NOTIFY savedColorsChanged)
 
 public:
     using Sender = std::function<ApplyResult(const QList<Packet> &)>;
 
-    Backend(ThemePaths paths, KeyLabels labels, Sender sender, QString colorsPath, QObject *parent = nullptr);
+    Backend(ThemePaths paths, QString libraryDir, KeyLabels labels, Sender sender, QString colorsPath,
+            QObject *parent = nullptr);
     ~Backend() override;
 
     QVariantList keys() const { return m_keys; }
-    QVariantList layers() const;
-    int currentLayer() const { return m_currentLayer; }
-    void setCurrentLayer(int layer);
+    QVariantList groups() const; // [{name, behavior, count, color}]
     QString currentKind() const;
+    int currentGroup() const { return m_kind == Kind::Group ? m_group : -1; }
+    QStringList groupKeys() const;
+    int animatedCount() const; // controller slots in use, the animated base included
     QVariantMap current() const;
     QStringList selection() const { return m_selection; }
     bool dirty() const { return m_dirty; }
     bool canUndo() const { return !m_undo.isEmpty(); }
     bool canRedo() const { return !m_redo.isEmpty(); }
     int revision() const { return m_revision; }
-    int brightness() const { return m_profile.brightness; }
+    int brightness() const { return m_doc.brightness; }
     void setBrightness(int value);
-    int speed() const { return m_profile.speed; }
+    int speed() const { return m_doc.speed; }
     void setSpeed(int value);
     bool busy() const { return m_busy; }
     int cooldownMs() const { return m_cooldownMs; }
     QString error() const { return m_error; }
     QString notice() const { return m_notice; }
-    QString themeName() const { return m_themeName; }
-    QString profilePath() const { return m_savePath; }
     bool experimentalReactive() const { return m_experimentalReactive; }
     void setExperimentalReactive(bool enabled);
     QStringList savedColors() const { return m_savedColors; }
-    const Profile &profile() const { return m_profile; }
+    const Document &document() const { return m_doc; }
 
+    Q_INVOKABLE void openBase();
+    Q_INVOKABLE void openGroup(int index); // clears the selection
+    Q_INVOKABLE void openReactive();
+    // A click on one key opens its group; anything else is a free selection, unless every
+    // key is in the open group.
     Q_INVOKABLE void select(const QStringList &ids, bool add);
     Q_INVOKABLE void selectGroup(const QString &name);
     Q_INVOKABLE void clearSelection();
+    // From the selection; "" or the reason it was refused.
+    Q_INVOKABLE QString createGroup(const QString &name);
+    Q_INVOKABLE void addSelectionToGroup(int index);
+    Q_INVOKABLE void removeSelectionFromGroup(); // from the open group
+    Q_INVOKABLE void deleteGroup(int index);
+    Q_INVOKABLE QString renameGroup(int index, const QString &name); // "" or the reason
+    Q_INVOKABLE QString setBehavior(const QString &behavior);       // open group; "" or the reason
+    Q_INVOKABLE QString defaultGroupName() const; // label of the single selected key, else "Group N"
     Q_INVOKABLE void setColor(const QColor &color);
     Q_INVOKABLE void setBaseType(const QString &type);
-    Q_INVOKABLE void addEffect(const QString &type);
-    Q_INVOKABLE void removeLayer(int layer);
-    Q_INVOKABLE void assignSelection();
     Q_INVOKABLE void setStepColor(int index, const QColor &color);
     Q_INVOKABLE void setStepDuration(int index, int duration);
     Q_INVOKABLE void addStep();
@@ -101,54 +113,55 @@ public:
     Q_INVOKABLE void endGesture();
     Q_INVOKABLE void undo();
     Q_INVOKABLE void redo();
-    Q_INVOKABLE void reloadTheme();
     Q_INVOKABLE void dismissError();
 
 signals:
     void profileChanged();
-    void currentLayerChanged();
+    void currentChanged();
     void selectionChanged();
     void busyChanged();
     void cooldownChanged();
     void errorChanged();
-    void themeChanged();
     void savedColorsChanged();
     void applyFinished(const ApplyResult &result);
 
 private:
+    enum class Kind { Base, Group, Selection, Reactive };
+
     // Every edit goes through here: snapshot for undo, apply the change, refresh.
-    void edit(const std::function<void(Profile &)> &change);
+    void edit(const std::function<void(Document &)> &change);
     void changed();
+    void setCurrent(Kind kind, int group = -1);
+    void setSelection(const QStringList &ids);
     void setError(const QString &error);
-    void loadProfile();
-    void watchTheme();
+    void open();
     void onApplyFinished(const ApplyResult &result);
-    EffectLayer *currentEffect();
-    const EffectLayer *currentEffect() const;
-    QList<Step> *currentSteps();
+    // The open group's steps (or the base's), in doc; nullptr when there are none to edit.
+    QList<Step> *stepsIn(Document &doc) const;
     void loadSavedColors();
     void storeSavedColors() const;
 
     ThemePaths m_paths;
+    Library m_library;
     KeyLabels m_labels;
     Sender m_sender;
     QString m_colorsPath;
     QVariantList m_keys;
 
-    Profile m_profile;
+    Document m_doc;
     std::optional<Preview> m_preview;
-    QList<Profile> m_undo, m_redo;
+    QList<Document> m_undo, m_redo;
     bool m_inGesture = false;       // between beginGesture() and endGesture()
     bool m_gestureRecorded = false; // the gesture already pushed its undo step
     QStringList m_selection;
-    int m_currentLayer = 0;
+    Kind m_kind = Kind::Base;
+    int m_group = -1;
     int m_revision = 0;
     bool m_dirty = false;
     bool m_busy = false;
     bool m_experimentalReactive = false;
     int m_cooldownMs = 0;
-    QString m_error, m_notice, m_themeName, m_savePath;
+    QString m_error, m_notice;
     QStringList m_savedColors;
-    QFileSystemWatcher m_watcher;
     QTimer m_cooldown;
 };

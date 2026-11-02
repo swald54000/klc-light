@@ -3,73 +3,51 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 
-// Left column: the active theme's profile and its layers.
+// Left column: the base, the profile's key groups and the reactive lighting.
+// Interim list until the group column is redesigned.
 ColumnLayout {
     spacing: 8
-
-    Label { text: qsTr("PROFILE"); font.pixelSize: 11; opacity: 0.6 }
-    Label {
-        Layout.fillWidth: true
-        text: qsTr("Theme: %1").arg(backend.themeName === "" ? qsTr("none") : backend.themeName)
-        font.bold: true
-        elide: Text.ElideRight
-    }
-    Label {
-        Layout.fillWidth: true
-        text: backend.profilePath.replace(/^.*\/themes\//, "themes/")
-        font.pixelSize: 10
-        opacity: 0.5
-        elide: Text.ElideMiddle
-    }
-
-    Label { text: qsTr("LAYERS"); font.pixelSize: 11; opacity: 0.6; Layout.topMargin: 8 }
 
     ListView {
         Layout.fillWidth: true
         Layout.fillHeight: true
         clip: true
         spacing: 2
-        model: backend.layers
+        // Base, then each group, then reactive.
+        model: [{ kind: "base" }].concat(backend.groups.map((g, i) => ({ kind: "group", index: i, group: g })))
+                                  .concat([{ kind: "reactive" }])
         delegate: ItemDelegate {
-            required property int index
             required property var modelData
             width: ListView.view.width
-            highlighted: index === backend.currentLayer
-            onClicked: backend.currentLayer = index
+            highlighted: modelData.kind === backend.currentKind
+                         && (modelData.kind !== "group" || modelData.index === backend.currentGroup)
+            onClicked: {
+                if (modelData.kind === "base")
+                    backend.openBase()
+                else if (modelData.kind === "group")
+                    backend.openGroup(modelData.index)
+                else
+                    backend.openReactive()
+            }
             text: {
                 const m = modelData
                 if (m.kind === "base")
-                    return qsTr("Base: %1").arg(typeName(m.type))
-                if (m.kind === "keys")
-                    return qsTr("Keys (%1)").arg(m.count)
-                if (m.kind === "effect")
-                    return qsTr("%1 (%2 keys)").arg(m.name).arg(m.count)
+                    return backend.currentKind === "base" ? qsTr("Base: %1").arg(typeName(backend.current.type)) : qsTr("Base")
+                if (m.kind === "group")
+                    return qsTr("%1 (%2 keys)").arg(m.group.name).arg(m.group.count)
                 return qsTr("Reactive (experimental)")
             }
             opacity: modelData.kind === "reactive" && !backend.experimentalReactive ? 0.5 : 1
         }
     }
 
-    RowLayout {
+    Button {
         Layout.fillWidth: true
-        Button {
-            Layout.fillWidth: true
-            text: qsTr("+ Wave")
-            enabled: backend.selection.length > 0
-            onClicked: backend.addEffect("wave")
-            ToolTip.text: qsTr("New wave effect on the selected keys")
-            ToolTip.visible: hovered
-        }
-        Button {
-            Layout.fillWidth: true
-            text: qsTr("+ Pulse")
-            enabled: backend.selection.length > 0
-            onClicked: backend.addEffect("pulse")
-            ToolTip.text: qsTr("New pulse effect on the selected keys")
-            ToolTip.visible: hovered
-        }
+        text: qsTr("Group %1").arg("+")
+        enabled: backend.selection.length > 0 && backend.currentKind === "selection"
+        onClicked: backend.createGroup(backend.defaultGroupName())
     }
-    // Qt shows no tooltip on a disabled button: say why the two above are greyed.
+    // Qt shows no tooltip on a disabled button: say why the one above is greyed.
     Label {
         objectName: "addEffectHint"
         Layout.fillWidth: true
@@ -82,8 +60,8 @@ ColumnLayout {
     Button {
         Layout.fillWidth: true
         text: qsTr("Remove effect")
-        enabled: backend.currentKind === "effect"
-        onClicked: backend.removeLayer(backend.currentLayer)
+        enabled: backend.currentKind === "group"
+        onClicked: backend.deleteGroup(backend.currentGroup)
     }
 
     function typeName(type) {

@@ -10,6 +10,8 @@ GridLayout {
 
     readonly property var cur: backend.current
     readonly property string kind: backend.currentKind
+    // The open group animates: its steps are edited, not one color.
+    readonly property bool animated: kind === "group" && cur.behavior !== "static"
     // Index of the step whose color the picker edits.
     property int stepIndex: 0
 
@@ -43,24 +45,55 @@ GridLayout {
 
         Label {
             Layout.fillWidth: true
-            visible: panel.kind === "keys"
-            text: backend.selection.length === 0 ? qsTr("Select keys, then pick a color.")
-                                                 : qsTr("%n key(s) selected", "", backend.selection.length)
+            visible: panel.kind === "selection"
+            text: qsTr("%n key(s) selected", "", backend.selection.length)
             wrapMode: Text.WordWrap
             opacity: 0.8
         }
 
         Label {
             Layout.fillWidth: true
-            visible: panel.kind === "effect"
+            visible: panel.kind === "group"
             text: panel.cur.name || ""
             font.bold: true
+        }
+
+        FlatComboBox {
+            objectName: "behaviorBox"
+            Layout.fillWidth: true
+            visible: panel.kind === "group"
+            model: [
+                { value: "static", text: qsTr("Static") },
+                { value: "pulse", text: qsTr("Pulse") },
+                { value: "wave", text: qsTr("Wave") }
+            ]
+            textRole: "text"
+            valueRole: "value"
+            currentIndex: Math.max(0, model.findIndex(m => m.value === panel.cur.behavior))
+            onActivated: {
+                const problem = backend.setBehavior(currentValue)
+                currentIndex = Math.max(0, model.findIndex(m => m.value === panel.cur.behavior))
+                if (problem !== "")
+                    behaviorProblem.text = problem
+            }
+        }
+        Label {
+            id: behaviorProblem
+            Layout.fillWidth: true
+            visible: panel.kind === "group" && text !== ""
+            wrapMode: Text.WordWrap
+            font.pixelSize: 11
+            color: "#ff8a80"
+            Connections {
+                target: backend
+                function onCurrentChanged() { behaviorProblem.text = "" }
+            }
         }
 
         // Color cycle of a wave or pulse: one row per step.
         ColumnLayout {
             Layout.fillWidth: true
-            visible: (panel.kind === "effect" || (panel.kind === "base" && panel.cur.type === "wave"))
+            visible: (panel.animated || (panel.kind === "base" && panel.cur.type === "wave"))
             spacing: 2
             Repeater {
                 // A count, not the steps array: the array is rebuilt on every edit, which would
@@ -121,13 +154,6 @@ GridLayout {
                     ToolTip.visible: hovered
                 }
             }
-            Button {
-                Layout.fillWidth: true
-                visible: panel.kind === "effect"
-                enabled: backend.selection.length > 0
-                text: qsTr("Add selected keys to this effect")
-                onClicked: backend.assignSelection()
-            }
         }
 
         ColumnLayout {
@@ -164,14 +190,14 @@ GridLayout {
 
         ColorPicker {
             Layout.fillWidth: true
-            enabled: !(panel.kind === "base" && panel.cur.type === "rainbow")
+            enabled: !(panel.kind === "base" && panel.cur.type === "rainbow") && panel.kind !== "selection"
             color: {
-                if (panel.cur.steps && panel.cur.steps.length > 0 && (panel.kind === "effect" || panel.cur.type === "wave"))
+                if (panel.cur.steps && panel.cur.steps.length > 0 && (panel.animated || (panel.kind === "base" && panel.cur.type === "wave")))
                     return panel.cur.steps[Math.min(panel.stepIndex, panel.cur.steps.length - 1)].color
                 return panel.cur.color || "white"
             }
             onPicked: c => {
-                if (panel.kind === "effect" || (panel.kind === "base" && panel.cur.type === "wave"))
+                if (panel.animated || (panel.kind === "base" && panel.cur.type === "wave"))
                     backend.setStepColor(panel.stepIndex, c)
                 else
                     backend.setColor(c)

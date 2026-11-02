@@ -82,7 +82,7 @@ int main(int argc, char *argv[]) {
             err << (packet.kind == Packet::Feature ? "F " : "O ") << packet.data.toHex() << "\n";
         return ApplyResult{};
     };
-    Backend backend(ThemePaths::standard(), KeyLabels::current(), sender,
+    Backend backend(ThemePaths::standard(), QDir::homePath() + "/.config/klc-light", KeyLabels::current(), sender,
                     QDir::homePath() + "/.config/klc-light/colors.json");
 
     QQmlApplicationEngine engine;
