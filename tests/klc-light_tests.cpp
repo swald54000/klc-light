@@ -777,6 +777,33 @@ private slots:
         QCOMPARE(removeError, QString("Aucun profil nommé « Nope »"));
     }
 
+    void libraryDefaultNameTranslated()
+    {
+        QTemporaryDir dir;
+        write(dir.path() + "/language", "fr\n");
+        Translator translator(dir.path() + "/language", ":/i18n");
+        QCoreApplication::installTranslator(&translator);
+        const QString french = Library::defaultName();
+        QCoreApplication::removeTranslator(&translator);
+        QCOMPARE(french, QString("Défaut"));
+        QCOMPARE(Library::defaultName(), QString("Default"));
+    }
+
+    // With no theme set up, the first start makes one profile, named in the user's language.
+    void libraryMigrateDefaultTranslated()
+    {
+        QTemporaryDir dir;
+        write(dir.path() + "/language", "fr\n");
+        Translator translator(dir.path() + "/language", ":/i18n");
+        QCoreApplication::installTranslator(&translator);
+        Library lib(dir.path() + "/klc");
+        const bool ran = lib.migrate(fakeTheme(dir, "tokyo-night"));
+        QCoreApplication::removeTranslator(&translator);
+        QVERIFY(ran);
+        QCOMPARE(lib.names(), QStringList{"Défaut"});
+        QCOMPARE(lib.applied(), QString("Défaut"));
+    }
+
     void libraryNameError()
     {
         QTemporaryDir dir;
@@ -1715,6 +1742,20 @@ private slots:
         QVERIFY(run.backend->dirty());
         QCOMPARE(run.backend->document().base.color, QColor("#123456"));
         QVERIFY(!run.backend->openProfile("nope"));
+    }
+
+    // The last profile deleted, the replacement is named in the user's language.
+    void backendDefaultNameTranslated()
+    {
+        EditorRun run;
+        seed(run, {"A"}, "A");
+        write(run.dir.path() + "/language", "fr\n");
+        Translator translator(run.dir.path() + "/language", ":/i18n");
+        QCoreApplication::installTranslator(&translator);
+        run.backend->deleteProfile();
+        QCoreApplication::removeTranslator(&translator);
+        QCOMPARE(run.backend->profileName(), QString("Défaut"));
+        QCOMPARE(run.backend->profiles(), QStringList({"Défaut"}));
     }
 
     void backendSaveFailure()

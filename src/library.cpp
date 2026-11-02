@@ -107,6 +107,8 @@ std::optional<Document> Library::load(const QString &name, QStringList *errors) 
     return readDocument(entry->path, errors);
 }
 
+QString Library::defaultName() { return QCoreApplication::translate("Library", "Default"); }
+
 QString Library::fileNameFor(const QString &name, const QStringList &takenFileNames) {
     QString base;
     for (const QChar c : name.toLower())
@@ -283,10 +285,11 @@ bool Library::migrate(const ThemePaths &paths) {
     }
     if (!any) {
         QString error;
-        if (save(fromLighting(Profile(), "Default"), &error))
-            setApplied("Default");
+        const QString name = defaultName();
+        if (save(fromLighting(Profile(), name), &error))
+            setApplied(name);
         else
-            qWarning("klc-light: migration: cannot save Default: %s", qPrintable(error));
+            qWarning("klc-light: migration: cannot save %s: %s", qPrintable(name), qPrintable(error));
         return true;
     }
     setApplied(profileForTheme(active));

@@ -43,6 +43,8 @@ public:
 
     // Fallback when state.json cannot be renamed: keep its bytes in a copy at path.
     static void copyAside(const QString &path, const QByteArray &bytes);
+    // The name of the profile made when there is none, in the user's language.
+    static QString defaultName();
     static QString fileNameFor(const QString &name, const QStringList &takenFileNames);
 
 private:

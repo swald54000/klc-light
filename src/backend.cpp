@@ -98,7 +98,7 @@ void Backend::open() {
     }
     if (!doc) {
         doc = Document();
-        doc->name = "Default";
+        doc->name = Library::defaultName();
     }
     openDocument(*doc);
     setError(errors.join("\n"));
@@ -705,7 +705,7 @@ void Backend::deleteProfile() {
     }
     if (!next) {
         Document doc;
-        doc.name = "Default";
+        doc.name = Library::defaultName();
         doc.base.color = Qt::black;
         if (!library.save(doc, &error)) {
             setError(tr("Could not save %1: %2").arg(doc.name, error));
