@@ -47,6 +47,13 @@ class Backend : public QObject {
     Q_PROPERTY(QString notice READ notice NOTIFY errorChanged)
     Q_PROPERTY(bool experimentalReactive READ experimentalReactive WRITE setExperimentalReactive NOTIFY profileChanged)
     Q_PROPERTY(QStringList savedColors READ savedColors NOTIFY savedColorsChanged)
+    // The library, read afresh from disk each time: a theme hook can change it while the
+    // editor is open.
+    Q_PROPERTY(QStringList profiles READ profiles NOTIFY libraryChanged)
+    Q_PROPERTY(QString profileName READ profileName NOTIFY libraryChanged)
+    Q_PROPERTY(QString appliedName READ appliedName NOTIFY libraryChanged)
+    Q_PROPERTY(QString linkedTheme READ linkedTheme NOTIFY libraryChanged)
+    Q_PROPERTY(QStringList themes READ themes CONSTANT)
 
 public:
     using Sender = std::function<ApplyResult(const QList<Packet> &)>;
@@ -79,6 +86,11 @@ public:
     void setExperimentalReactive(bool enabled);
     QStringList savedColors() const { return m_savedColors; }
     const Document &document() const { return m_doc; }
+    QStringList profiles() const { return fresh().names(); }
+    QString profileName() const { return m_doc.name; }
+    QString appliedName() const { return fresh().applied(); }
+    QString linkedTheme() const { return fresh().themeOf(m_doc.name); }
+    QStringList themes() const { return installedThemes(m_paths); }
 
     Q_INVOKABLE void openBase();
     Q_INVOKABLE void openGroup(int index); // clears the selection
@@ -108,6 +120,18 @@ public:
     Q_INVOKABLE void setSavedColor(int index, const QColor &color);
     Q_INVOKABLE QColor previewColor(const QString &id, qint64 ms) const;
     Q_INVOKABLE void apply();
+    // Profiles. Opening one discards unsaved changes (the QML asks first) and resets undo.
+    // The new/duplicate/rename calls return "" or the reason they were refused.
+    Q_INVOKABLE bool openProfile(const QString &name);
+    Q_INVOKABLE QString newProfile(const QString &name);       // empty, saved, opened
+    Q_INVOKABLE QString duplicateProfile(const QString &name); // the open document, saved, opened
+    Q_INVOKABLE QString renameProfile(const QString &name);    // the open profile
+    Q_INVOKABLE void deleteProfile();                          // the open one; opens the next
+    // Links the open profile to the theme ("" unlinks); returns the profile the theme was
+    // linked to before, if another one. Not an edit: no undo step, not dirty.
+    Q_INVOKABLE QString linkTheme(const QString &theme);
+    Q_INVOKABLE bool save(); // to the library, without sending
+    Q_INVOKABLE QString nameError(const QString &name) const;
     // Everything edited between these two calls is one undo step (press, drag, release).
     Q_INVOKABLE void beginGesture();
     Q_INVOKABLE void endGesture();
@@ -123,6 +147,7 @@ signals:
     void cooldownChanged();
     void errorChanged();
     void savedColorsChanged();
+    void libraryChanged();
     void applyFinished(const ApplyResult &result);
 
 private:
@@ -135,6 +160,11 @@ private:
     void setSelection(const QStringList &ids);
     void setError(const QString &error);
     void open();
+    // Makes doc the open profile: no history, no selection, not dirty.
+    void openDocument(const Document &doc);
+    // The library as it is on disk now, never the copy read at startup: every state write
+    // rewrites the whole state.json from what its Library holds.
+    Library fresh() const { return Library(m_library.dir()); }
     void onApplyFinished(const ApplyResult &result);
     // The open group's steps (or the base's), in doc; nullptr when there are none to edit.
     QList<Step> *stepsIn(Document &doc) const;

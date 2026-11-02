@@ -1481,6 +1481,182 @@ private slots:
         QTRY_COMPARE(Library(klc).applied(), QString("Default"));
     }
 
+    void backendOpensApplied()
+    {
+        EditorRun run;
+        seed(run, {"A", "B"}, "B");
+        QCOMPARE(run.backend->profileName(), QString("B"));
+        QCOMPARE(run.backend->appliedName(), QString("B"));
+        QCOMPARE(run.backend->profiles(), QStringList({"A", "B"}));
+    }
+
+    void backendNewDuplicateRename()
+    {
+        EditorRun run;
+        const QString klc = run.dir.path() + "/klc";
+        QCOMPARE(run.backend->newProfile("C"), QString());
+        QCOMPARE(run.backend->profileName(), QString("C"));
+        QVERIFY(run.backend->document().groups.isEmpty());
+        QCOMPARE(run.backend->document().base.type, QString("static"));
+        QCOMPARE(run.backend->document().base.color, QColor(Qt::black));
+        QVERIFY(Library(klc).names().contains("C"));
+
+        makeGroup(run.backend, "F1", {"KEY_F1"});
+        QVERIFY(run.backend->save());
+        QCOMPARE(run.backend->duplicateProfile("C (copy)"), QString());
+        QCOMPARE(run.backend->profileName(), QString("C (copy)"));
+        QCOMPARE(run.backend->document().groups.size(), 1);
+        QVERIFY(!run.backend->dirty());
+        QVERIFY(Library(klc).names().contains("C (copy)"));
+
+        // Empty or taken (whatever the case): refused, nothing changes.
+        const QStringList before = run.backend->profiles();
+        QVERIFY(!run.backend->newProfile("").isEmpty());
+        QVERIFY(!run.backend->newProfile("c").isEmpty());
+        QVERIFY(!run.backend->duplicateProfile(" ").isEmpty());
+        QVERIFY(!run.backend->renameProfile("C").isEmpty());
+        QVERIFY(!run.backend->renameProfile("").isEmpty());
+        QCOMPARE(run.backend->profiles(), before);
+        QCOMPARE(run.backend->profileName(), QString("C (copy)"));
+
+        QCOMPARE(run.backend->renameProfile("D"), QString());
+        QVERIFY(run.backend->profiles().contains("D"));
+        QVERIFY(!run.backend->profiles().contains("C (copy)"));
+        QCOMPARE(run.backend->profileName(), QString("D"));
+        QCOMPARE(run.backend->nameError("d").isEmpty(), false);
+        QCOMPARE(run.backend->nameError("Z"), QString());
+    }
+
+    void backendSwitchResetsHistory()
+    {
+        EditorRun run;
+        seed(run, {"A", "B"}, "A");
+        run.backend->setColor(QColor("#123456"));
+        QVERIFY(run.backend->canUndo());
+        QVERIFY(run.backend->save());
+        QVERIFY(run.backend->openProfile("B"));
+        QCOMPARE(run.backend->profileName(), QString("B"));
+        QVERIFY(!run.backend->canUndo());
+        QVERIFY(!run.backend->canRedo());
+        QVERIFY(!run.backend->dirty());
+        QVERIFY(run.backend->openProfile("A"));
+        QCOMPARE(run.backend->document().base.color, QColor("#123456"));
+    }
+
+    void backendSaveDoesNotSend()
+    {
+        EditorRun run;
+        seed(run, {"A"}, "A");
+        run.backend->setColor(QColor("#123456"));
+        QVERIFY(run.backend->dirty());
+        QVERIFY(run.backend->save());
+        QVERIFY(!run.backend->dirty());
+        QTest::qWait(50);
+        QCOMPARE(run.sent, 0);
+        QStringList errors;
+        const auto saved = Library(run.dir.path() + "/klc").load("A", &errors);
+        QVERIFY(saved);
+        QCOMPARE(saved->base.color, QColor("#123456"));
+        QCOMPARE(Library(run.dir.path() + "/klc").applied(), QString("A"));
+    }
+
+    void backendLinkTheme()
+    {
+        EditorRun run;
+        const QString klc = run.dir.path() + "/klc";
+        seed(run, {"A", "B"}, "B");
+        Library(klc).link("A", "tron");
+        QVERIFY(run.backend->openProfile("B"));
+        QCOMPARE(run.backend->linkTheme("tron"), QString("A"));
+        QCOMPARE(run.backend->linkedTheme(), QString("tron"));
+        QCOMPARE(Library(klc).profileForTheme("tron"), QString("B"));
+        QVERIFY(!run.backend->canUndo());
+        QVERIFY(!run.backend->dirty());
+        // Linking again to the same profile reports nothing; "" unlinks.
+        QCOMPARE(run.backend->linkTheme("tron"), QString());
+        QCOMPARE(run.backend->linkTheme(""), QString());
+        QCOMPARE(run.backend->linkedTheme(), QString());
+    }
+
+    // A theme hook can change state.json while the editor is open: the editor must not undo it.
+    void backendKeepsExternalStateChanges()
+    {
+        EditorRun run;
+        const QString klc = run.dir.path() + "/klc";
+        seed(run, {"A", "B"}, "A");
+        Library(klc).link("B", "tron");
+        Library(klc).setApplied("B");
+        QCOMPARE(run.backend->appliedName(), QString("B"));
+        QCOMPARE(run.backend->linkTheme("nord"), QString());
+        QCOMPARE(Library(klc).profileForTheme("tron"), QString("B"));
+        QCOMPARE(Library(klc).applied(), QString("B"));
+        Library(klc).link("B", "tron2");
+        QCOMPARE(run.backend->renameProfile("A2"), QString());
+        QCOMPARE(Library(klc).profileForTheme("tron2"), QString("B"));
+        QCOMPARE(Library(klc).applied(), QString("B"));
+    }
+
+    void backendDeleteApplied()
+    {
+        EditorRun run;
+        const QString klc = run.dir.path() + "/klc";
+        seed(run, {"A", "B", "C"}, "B");
+        QCOMPARE(run.backend->profileName(), QString("B"));
+        run.backend->deleteProfile();
+        QCOMPARE(run.backend->appliedName(), QString());
+        QCOMPARE(run.backend->profileName(), QString("C"));
+        QCOMPARE(run.backend->profiles(), QStringList({"A", "C"}));
+        QVERIFY(!run.backend->dirty());
+    }
+
+    void backendDeleteLastProfile()
+    {
+        EditorRun run;
+        seed(run, {"A"}, "A");
+        run.backend->deleteProfile();
+        QCOMPARE(run.backend->profileName(), QString("Default"));
+        QCOMPARE(run.backend->profiles(), QStringList({"Default"}));
+        QVERIFY(run.backend->document().groups.isEmpty());
+        QCOMPARE(run.backend->document().base.color, QColor(Qt::black));
+    }
+
+    void backendUnreadableProfile()
+    {
+        EditorRun run;
+        const QString klc = run.dir.path() + "/klc";
+        seed(run, {"A", "B"}, "A");
+        QFile bad(klc + "/profiles/broken.klc.json");
+        QVERIFY(bad.open(QIODevice::WriteOnly));
+        bad.write("{ not json");
+        bad.close();
+        QStringList unreadable;
+        for (const LibraryEntry &entry : Library(klc).entries())
+            if (!entry.readable)
+                unreadable.append(entry.name);
+        QCOMPARE(unreadable.size(), 1);
+        run.backend->setColor(QColor("#123456"));
+        QVERIFY(!run.backend->openProfile(unreadable.first()));
+        QVERIFY(!run.backend->error().isEmpty());
+        QCOMPARE(run.backend->profileName(), QString("A"));
+        QVERIFY(run.backend->dirty());
+        QCOMPARE(run.backend->document().base.color, QColor("#123456"));
+        QVERIFY(!run.backend->openProfile("nope"));
+    }
+
+    void backendSaveFailure()
+    {
+        EditorRun run;
+        seed(run, {"A"}, "A");
+        const QString profiles = run.dir.path() + "/klc/profiles";
+        run.backend->setColor(QColor("#123456"));
+        QFile::setPermissions(profiles, QFileDevice::ReadOwner | QFileDevice::ExeOwner);
+        const bool saved = run.backend->save();
+        QFile::setPermissions(profiles, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+        QVERIFY(!saved);
+        QVERIFY(!run.backend->error().isEmpty());
+        QVERIFY(run.backend->dirty());
+    }
+
     void backendApplyInvalid()
     {
         EditorRun run;
@@ -1979,6 +2155,27 @@ private:
         ApplyResult result; // what the fake keyboard answers
         Backend *backend = nullptr;
     };
+
+    // A library holding the given profiles (applied = the last argument when not empty), then
+    // a fresh editor over it.
+    static void seed(EditorRun &run, const QStringList &names, const QString &applied = {})
+    {
+        // Whatever the first start made (migration) goes.
+        QDir(run.dir.path() + "/klc").removeRecursively();
+        Library library(run.dir.path() + "/klc");
+        for (const QString &name : names) {
+            Document doc;
+            doc.name = name;
+            QString error;
+            QVERIFY2(library.save(doc, &error), qPrintable(error));
+        }
+        if (!applied.isEmpty())
+            library.setApplied(applied);
+        delete run.backend;
+        run.backend = new Backend(run.paths, run.dir.path() + "/klc", KeyLabels::fromRmlvo("fr", ""),
+                                  [&run](const QList<Packet> &) { ++run.sent; return run.result; },
+                                  run.dir.path() + "/colors.json");
+    }
 
     // Runs the command line against a fake theme and a fake keyboard.
     struct CliRun {

@@ -100,12 +100,20 @@ void Backend::open() {
         doc = Document();
         doc->name = "Default";
     }
-    m_doc = *doc;
+    openDocument(*doc);
+    setError(errors.join("\n"));
+}
+
+void Backend::openDocument(const Document &doc) {
+    m_doc = doc;
     m_undo.clear();
     m_redo.clear();
     m_dirty = false;
-    setError(errors.join("\n"));
+    setSelection({});
+    m_kind = Kind::Base;
+    m_group = -1;
     changed();
+    emit libraryChanged();
 }
 
 void Backend::changed() {
@@ -534,15 +542,10 @@ void Backend::apply() {
         setError(errors.join("\n"));
         return;
     }
-    QString saveError;
-    if (!m_library.save(m_doc, &saveError)) {
-        setError(tr("Could not save %1: %2").arg(m_doc.name, saveError));
+    if (!save())
         return;
-    }
     m_sending = m_doc.name;
-    m_dirty = false;
     setError(QString());
-    emit profileChanged();
 
     m_busy = true;
     emit busyChanged();
@@ -560,11 +563,136 @@ void Backend::onApplyFinished(const ApplyResult &result) {
     } else {
         // What the keyboard shows, and what `klc-light apply` sends again at boot. Read
         // state.json afresh: a theme hook may have changed it since the editor opened.
-        Library(m_library.dir()).setApplied(m_sending);
+        fresh().setApplied(m_sending);
+        emit libraryChanged();
     }
     m_cooldownMs = Device::MinIntervalMs;
     m_cooldown.start();
     emit cooldownChanged();
+}
+
+bool Backend::save() {
+    QString error;
+    if (!fresh().save(m_doc, &error)) {
+        setError(tr("Could not save %1: %2").arg(m_doc.name, error));
+        return false;
+    }
+    m_dirty = false;
+    emit profileChanged();
+    emit libraryChanged();
+    return true;
+}
+
+QString Backend::nameError(const QString &name) const { return fresh().nameError(name); }
+
+bool Backend::openProfile(const QString &name) {
+    QStringList errors;
+    const auto doc = fresh().load(name, &errors);
+    if (!doc) {
+        setError(errors.isEmpty() ? tr("Could not open %1").arg(name) : errors.join("\n"));
+        return false;
+    }
+    setError(QString());
+    openDocument(*doc);
+    return true;
+}
+
+QString Backend::newProfile(const QString &name) {
+    if (const QString problem = fresh().nameError(name); !problem.isEmpty())
+        return problem;
+    Document doc;
+    doc.name = name.trimmed();
+    doc.base.color = Qt::black;
+    QString error;
+    if (!fresh().save(doc, &error)) {
+        setError(tr("Could not save %1: %2").arg(doc.name, error));
+        return error;
+    }
+    setError(QString());
+    openDocument(doc);
+    return {};
+}
+
+QString Backend::duplicateProfile(const QString &name) {
+    if (const QString problem = fresh().nameError(name); !problem.isEmpty())
+        return problem;
+    Document doc = m_doc;
+    doc.name = name.trimmed();
+    QString error;
+    if (!fresh().save(doc, &error)) {
+        setError(tr("Could not save %1: %2").arg(doc.name, error));
+        return error;
+    }
+    setError(QString());
+    openDocument(doc);
+    return {};
+}
+
+QString Backend::renameProfile(const QString &name) {
+    Library library = fresh();
+    const QString to = name.trimmed();
+    if (const QString problem = library.nameError(to, m_doc.name); !problem.isEmpty())
+        return problem;
+    QString error;
+    if (library.names().contains(m_doc.name)) {
+        if (!library.rename(m_doc.name, to, &error)) {
+            setError(tr("Could not rename %1: %2").arg(m_doc.name, error));
+            return error;
+        }
+        m_doc.name = to;
+    } else {
+        // Never saved: it only exists in the editor.
+        m_doc.name = to;
+        if (!save())
+            return m_error;
+    }
+    emit profileChanged();
+    emit libraryChanged();
+    return {};
+}
+
+void Backend::deleteProfile() {
+    Library library = fresh();
+    const QStringList before = library.names();
+    const int index = int(before.indexOf(m_doc.name));
+    QString error;
+    if (index >= 0 && !library.remove(m_doc.name, &error)) {
+        setError(tr("Could not delete %1: %2").arg(m_doc.name, error));
+        return;
+    }
+    // The one that took its place in the list, else the one before it.
+    const QList<LibraryEntry> entries = library.entries();
+    QList<LibraryEntry> readable;
+    for (const LibraryEntry &entry : entries)
+        if (entry.readable)
+            readable.append(entry);
+    std::optional<Document> next;
+    QStringList errors;
+    for (int i = 0; i < readable.size() && !next; ++i) {
+        const LibraryEntry &entry = readable[std::min(std::max(index, 0) + i, int(readable.size()) - 1)];
+        next = library.load(entry.name, &errors);
+    }
+    if (!next) {
+        Document doc;
+        doc.name = "Default";
+        doc.base.color = Qt::black;
+        if (!library.save(doc, &error)) {
+            setError(tr("Could not save %1: %2").arg(doc.name, error));
+            return;
+        }
+        next = doc;
+    }
+    setError(QString());
+    openDocument(*next);
+}
+
+QString Backend::linkTheme(const QString &theme) {
+    if (!fresh().names().contains(m_doc.name) && !save())
+        return {};
+    Library library = fresh();
+    const QString previous = library.link(m_doc.name, theme.trimmed());
+    emit libraryChanged();
+    return previous == m_doc.name ? QString() : previous;
 }
 
 void Backend::beginGesture() {
