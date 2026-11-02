@@ -11,6 +11,7 @@
 #include "backend.h"
 #include "cli.h"
 #include "device.h"
+#include "document.h"
 #include "sudobinder.h"
 #include "effects.h"
 #include "keylabels.h"
@@ -73,6 +74,8 @@ public:
 private:
     FakeLog &m_log;
 };
+
+Q_DECLARE_METATYPE(Profile)
 
 class KlcLightTests : public QObject {
     Q_OBJECT
@@ -345,6 +348,233 @@ private slots:
         QCOMPARE(baseEffect(base).origin, QString("aqua-1"));
     }
 
+    void documentRoundTrip()
+    {
+        Document d;
+        d.name = "Mine";
+        d.brightness = 70;
+        d.speed = 150;
+        d.reactive = {true, QColor("#A0B0C0"), 40};
+        Group stat;
+        stat.name = "WA";
+        stat.keys = {"KEY_W", "KEY_A"};
+        stat.color = QColor("#00E5FF");
+        Group pulse;
+        pulse.name = "Pulse";
+        pulse.behavior = "pulse";
+        pulse.keys = {"KEY_F1"};
+        pulse.start = QColor("#000000");
+        pulse.steps = {{QColor("#FF0000"), 100}, {QColor("#00FF00"), 200}};
+        pulse.closing = 50;
+        pulse.origin = "aqua-0";
+        Group wave;
+        wave.name = "Wave";
+        wave.behavior = "wave";
+        wave.keys = {"KEY_Q"};
+        wave.steps = {{QColor("#0000FF"), 300}};
+        wave.start = wave.steps.first().color;
+        wave.origin = "aqua-2";
+        d.groups = {stat, pulse, wave};
+
+        const QJsonObject json = toJson(d);
+        QCOMPARE(json["version"].toInt(), 2);
+        QCOMPARE(json["name"].toString(), d.name);
+        QStringList errors;
+        const auto back = documentFromJson(json, &errors);
+        QVERIFY2(back && errors.isEmpty(), qPrintable(errors.join("; ")));
+        QCOMPARE(back->name, d.name);
+        QCOMPARE(back->brightness, 70);
+        QCOMPARE(back->speed, 150);
+        QCOMPARE(back->reactive.duration, 40);
+        QCOMPARE(back->reactive.color, QColor("#A0B0C0"));
+        QVERIFY(back->reactive.enabled);
+        QCOMPARE(back->groups.size(), 3);
+        for (int i = 0; i < 3; ++i) {
+            const Group &a = d.groups[i], &b = back->groups[i];
+            QCOMPARE(b.name, a.name);
+            QCOMPARE(b.behavior, a.behavior);
+            QCOMPARE(b.keys, a.keys);
+            QCOMPARE(b.closing, a.closing);
+            QCOMPARE(b.origin, a.origin);
+            QCOMPARE(b.steps.size(), a.steps.size());
+            if (a.animated())
+                QCOMPARE(b.start, a.start);
+            else
+                QCOMPARE(b.color, a.color);
+        }
+        QCOMPARE(back->groups[1].steps[1].color, QColor("#00FF00"));
+        QCOMPARE(back->groups[1].steps[1].duration, 200);
+        QVERIFY(validate(*back, Layout::gs76()).isEmpty());
+    }
+
+    void documentFromV1()
+    {
+        Profile p;
+        p.keys = {{"KEY_W", QColor("#FF0000")}, {"KEY_A", QColor("#FF0000")}, {"KEY_ESC", QColor("#00FF00")}};
+        EffectLayer e;
+        e.name = "Pulse 1";
+        e.type = "pulse";
+        e.keys = {"KEY_F1"};
+        e.start = QColor("#112233");
+        e.steps = {{QColor("#445566"), 77}};
+        e.closing = 9;
+        e.origin = "aqua-3";
+        p.effects = {e};
+        const Document d = fromLighting(p, "X");
+        QCOMPARE(d.name, QString("X"));
+        QCOMPARE(d.groups.size(), 3);
+        // KEY_ESC comes before KEY_W in the layout, so green opens the first group.
+        const QList<Key> keys = Layout::gs76().keys();
+        auto index = [&](const QString &id) { for (int i = 0; i < keys.size(); ++i) if (keys[i].id == id) return i; return -1; };
+        const bool escFirst = index("KEY_ESC") < index("KEY_W");
+        const Group &red = d.groups[escFirst ? 1 : 0], &green = d.groups[escFirst ? 0 : 1];
+        QVERIFY(!red.animated());
+        QCOMPARE(red.color.name(), QString("#ff0000"));
+        QCOMPARE(red.name, QString("Group #ff0000"));
+        QCOMPARE(green.name, QString("Group #00ff00"));
+        QCOMPARE(red.keys.size(), 2);
+        const Group &pulse = d.groups[2];
+        QCOMPARE(pulse.name, QString("Pulse 1"));
+        QCOMPARE(pulse.behavior, QString("pulse"));
+        QCOMPARE(pulse.start, QColor("#112233"));
+        QCOMPARE(pulse.steps.size(), 1);
+        QCOMPARE(pulse.steps[0].duration, 77);
+        QCOMPARE(pulse.closing, 9);
+        QCOMPARE(pulse.origin, QString("aqua-3"));
+        QCOMPARE(d.groupOf("KEY_F1"), 2);
+        QCOMPARE(d.groupOf("KEY_Z"), -1);
+    }
+
+    void documentV1EffectWinsOverPaint()
+    {
+        Profile p;
+        p.keys = {{"KEY_F1", QColor("#FF0000")}, {"KEY_W", QColor("#FF0000")}};
+        EffectLayer e;
+        e.name = "E";
+        e.type = "pulse";
+        e.keys = {"KEY_F1"};
+        e.start = QColor("#000000");
+        e.steps = {{QColor("#FFFFFF"), 10}};
+        e.origin = "aqua-0";
+        p.effects = {e};
+        const Document d = fromLighting(p, "X");
+        QCOMPARE(d.groups.size(), 2);
+        QVERIFY(!d.groups[0].keys.contains("KEY_F1"));
+        QVERIFY(d.groups[1].keys.contains("KEY_F1"));
+    }
+
+    void documentSamePackets_data()
+    {
+        QTest::addColumn<Profile>("profile");
+        Profile all;
+        all.base.color = QColor("#00E5FF");
+        Profile zqsd = all;
+        for (const QString &id : {"KEY_Q", "KEY_W", "KEY_E", "KEY_A", "KEY_S", "KEY_D"})
+            zqsd.keys.insert(id, QColor("#FF0000"));
+        QTest::newRow("ares") << builtinProfile("ares");
+        QTest::newRow("tron") << builtinProfile("tron");
+        QTest::newRow("static") << all;
+        QTest::newRow("zqsd") << zqsd;
+    }
+
+    void documentSamePackets()
+    {
+        QFETCH(Profile, profile);
+        expectSamePackets(profile);
+    }
+
+    void documentTronUserFileSamePackets()
+    {
+        QStringList errors;
+        const auto profile = readProfile(QString(KLC_FIXTURES) + "/tron-user.klc.json", &errors);
+        QVERIFY2(profile, qPrintable(errors.join("; ")));
+        expectSamePackets(*profile);
+    }
+
+    void documentRejects_data()
+    {
+        QTest::addColumn<QStringList>("names");
+        QTest::addColumn<QString>("expected");
+        QTest::newRow("empty name") << QStringList{"empty"} << "name";
+        QTest::newRow("duplicate name") << QStringList{"dup"} << "name";
+        QTest::newRow("key twice") << QStringList{"twice"} << "KEY_W";
+        QTest::newRow("unknown key") << QStringList{"unknown"} << "KEY_NOPE";
+        QTest::newRow("no steps") << QStringList{"nosteps"} << "step";
+        QTest::newRow("seven animated") << QStringList{"seven"} << "animated";
+    }
+
+    void documentRejects()
+    {
+        QFETCH(QStringList, names);
+        QFETCH(QString, expected);
+        auto stat = [](const QString &name, const QStringList &keys) {
+            Group g;
+            g.name = name;
+            g.keys = keys;
+            return g;
+        };
+        auto pulse = [](const QString &name, const QStringList &keys) {
+            Group g;
+            g.name = name;
+            g.behavior = "pulse";
+            g.keys = keys;
+            g.start = QColor("#000000");
+            g.steps = {{QColor("#FFFFFF"), 10}};
+            g.origin = "aqua-0";
+            return g;
+        };
+        Document d;
+        const QString kind = names.first();
+        if (kind == "empty")
+            d.groups = {stat("", {"KEY_W"})};
+        else if (kind == "dup")
+            d.groups = {stat("A", {"KEY_W"}), stat("A", {"KEY_Q"})};
+        else if (kind == "twice")
+            d.groups = {stat("A", {"KEY_W"}), stat("B", {"KEY_W"})};
+        else if (kind == "unknown")
+            d.groups = {stat("A", {"KEY_NOPE"})};
+        else if (kind == "nosteps") {
+            Group g = pulse("A", {"KEY_W"});
+            g.steps.clear();
+            d.groups = {g};
+        } else {
+            for (int i = 0; i < 7; ++i)
+                d.groups.append(pulse(QString("P%1").arg(i), {QString("KEY_F%1").arg(i + 1)}));
+        }
+        const QStringList errors = validate(d, Layout::gs76());
+        QVERIFY(!errors.isEmpty());
+        QVERIFY2(errors.join("; ").contains(expected), qPrintable(errors.join("; ")));
+    }
+
+    void documentReadsV1File()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        Profile p;
+        p.base.color = QColor("#00E5FF");
+        p.keys.insert("KEY_W", QColor("#FF0000"));
+        const QString path = dir.filePath("v1.klc.json");
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(QJsonDocument(toJson(p)).toJson());
+        file.close();
+        QStringList errors;
+        const auto d = readDocument(path, &errors);
+        QVERIFY2(d, qPrintable(errors.join("; ")));
+        QVERIFY(d->name.isEmpty());
+        QCOMPARE(d->groups.size(), 1);
+        QVERIFY(validate(*d, Layout::gs76()).isEmpty());
+
+        // And a v2 file survives a save and a read.
+        Document copy = *d;
+        copy.name = "Saved";
+        QString error;
+        QVERIFY2(saveDocument(copy, dir.filePath("sub/v2.klc.json"), &error), qPrintable(error));
+        const auto back = readDocument(dir.filePath("sub/v2.klc.json"), &errors);
+        QVERIFY2(back, qPrintable(errors.join("; ")));
+        QCOMPARE(back->name, QString("Saved"));
+    }
+
     void protocolStaticAll()
     {
         Profile profile;
@@ -356,7 +586,7 @@ private slots:
     {
         Profile profile;
         profile.base.color = QColor("#00E5FF");
-        for (const QString &id : {"KEY_Q", "KEY_W", "KEY_E", "KEY_A", "KEY_S", "KEY_D"})
+        for (const QString id : {"KEY_Q", "KEY_W", "KEY_E", "KEY_A", "KEY_S", "KEY_D"})
             profile.keys.insert(id, QColor("#FF0000"));
         compareWithFixture(buildPackets(profile, Layout::gs76()), "static-zqsd.hex");
     }
@@ -1186,6 +1416,18 @@ private slots:
     }
 
 private:
+    static void expectSamePackets(const Profile &profile)
+    {
+        const BuildResult want = buildPackets(profile, Layout::gs76());
+        const BuildResult got = buildPackets(lighting(fromLighting(profile, "t")), Layout::gs76());
+        QVERIFY(want.errors.isEmpty());
+        QCOMPARE(got.errors, want.errors);
+        QCOMPARE(got.packets.size(), want.packets.size());
+        for (int i = 0; i < want.packets.size(); ++i) {
+            QCOMPARE(int(got.packets[i].kind), int(want.packets[i].kind));
+            QCOMPARE(got.packets[i].data, want.packets[i].data);
+        }
+    }
 
 
     // An editor on a fake theme whose sends are counted instead of reaching a keyboard.

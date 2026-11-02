@@ -11,6 +11,8 @@ namespace {
 const QStringList kBaseTypes{"static", "breathing", "flashing", "rainbow", "wave"};
 const QStringList kEffectTypes{"wave", "pulse"};
 
+} // namespace
+
 QString colorName(const QColor &color) { return color.name(QColor::HexRgb).toUpper(); }
 
 // Only "#RRGGBB": QColor would also take names and short forms, which a hand-edited
@@ -51,8 +53,6 @@ QList<Step> stepsFromJson(const QJsonValue &value, const QString &where, QString
     }
     return steps;
 }
-
-} // namespace
 
 int animatedSlots(const Profile &profile) {
     return profile.effects.size() + (profile.base.type == "static" ? 0 : 1);

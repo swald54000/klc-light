@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QColor>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QList>
 #include <QMap>
@@ -60,3 +61,9 @@ std::optional<Profile> profileFromJson(const QJsonObject &object, QStringList *e
 // Problems that would make the profile unsafe or impossible to send; empty when valid.
 QStringList validate(const Profile &profile, const Layout &layout);
 int animatedSlots(const Profile &profile);
+
+// JSON helpers shared with the group-based format.
+QString colorName(const QColor &color);
+std::optional<QColor> parseColor(const QJsonValue &value, const QString &where, QStringList *errors);
+QJsonArray stepsToJson(const QList<Step> &steps);
+QList<Step> stepsFromJson(const QJsonValue &value, const QString &where, QStringList *errors);

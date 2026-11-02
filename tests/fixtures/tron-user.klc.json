@@ -1,0 +1,28 @@
+{
+    "base": {
+        "origin": "aqua-1",
+        "steps": [
+            [
+                "#FF5F00",
+                55
+            ],
+            [
+                "#FF000D",
+                40
+            ]
+        ],
+        "type": "wave"
+    },
+    "brightness": 100,
+    "keys": {
+        "KEY_KPENTER": "#5BFF00",
+        "KEY_SPACE": "#002FFF"
+    },
+    "reactive": {
+        "color": "#FFFFFF",
+        "duration": 30,
+        "enabled": false
+    },
+    "speed": 100,
+    "version": 1
+}
