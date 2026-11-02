@@ -84,6 +84,13 @@ class KlcLightTests : public QObject {
     Q_OBJECT
 
 private slots:
+    // The tests read English strings: without an Omarchy language file the app follows the
+    // system locale, so pin it to C whatever the developer's own locale is.
+    void initTestCase()
+    {
+        qputenv("LC_ALL", "C");
+    }
+
     void themeFallsBack()
     {
         QTemporaryDir dir;
@@ -130,6 +137,59 @@ private slots:
         Translator translator(dir.path() + "/language", dir.path());
         QCOMPARE(translator.language(), QString("en"));
         QVERIFY(translator.translate("Main", "Save").isNull());
+    }
+
+    // No Omarchy language picked: the system locale decides (LC_ALL, then LC_MESSAGES, then LANG).
+    void translatorFollowsTheSystemLocale_data()
+    {
+        QTest::addColumn<QByteArray>("lcAll");
+        QTest::addColumn<QByteArray>("lcMessages");
+        QTest::addColumn<QByteArray>("lang");
+        QTest::addColumn<QString>("expected");
+        QTest::newRow("LANG fr") << QByteArray() << QByteArray() << QByteArray("fr_FR.UTF-8") << "fr";
+        QTest::newRow("LC_MESSAGES wins") << QByteArray() << QByteArray("fr_FR.UTF-8") << QByteArray("en_US.UTF-8") << "fr";
+        QTest::newRow("LC_ALL wins") << QByteArray("en_GB.UTF-8") << QByteArray("fr_FR.UTF-8") << QByteArray("fr_FR.UTF-8") << "en";
+        QTest::newRow("C is English") << QByteArray("C") << QByteArray() << QByteArray("fr_FR.UTF-8") << "en";
+        QTest::newRow("POSIX is English") << QByteArray("POSIX") << QByteArray() << QByteArray() << "en";
+        QTest::newRow("nothing set") << QByteArray() << QByteArray() << QByteArray() << "en";
+    }
+
+    void translatorFollowsTheSystemLocale()
+    {
+        QFETCH(QByteArray, lcAll);
+        QFETCH(QByteArray, lcMessages);
+        QFETCH(QByteArray, lang);
+        QFETCH(QString, expected);
+        const QByteArray saved = qgetenv("LC_ALL"), savedMessages = qgetenv("LC_MESSAGES"), savedLang = qgetenv("LANG");
+        auto set = [](const char *name, const QByteArray &value) {
+            if (value.isEmpty())
+                qunsetenv(name);
+            else
+                qputenv(name, value);
+        };
+        set("LC_ALL", lcAll);
+        set("LC_MESSAGES", lcMessages);
+        set("LANG", lang);
+        QTemporaryDir dir;
+        Translator translator(dir.path() + "/language", ":/i18n");
+        set("LC_ALL", saved);
+        set("LC_MESSAGES", savedMessages);
+        set("LANG", savedLang);
+        QCOMPARE(translator.language(), expected);
+        if (expected == "fr")
+            QCOMPARE(translator.translate("Main", "Save"), QString("Enregistrer"));
+    }
+
+    // A language picked in Omarchy wins over the system locale.
+    void translatorOmarchyLanguageWinsOverSystem()
+    {
+        const QByteArray saved = qgetenv("LC_ALL");
+        qputenv("LC_ALL", "fr_FR.UTF-8");
+        QTemporaryDir dir;
+        write(dir.path() + "/language", "en\n");
+        Translator translator(dir.path() + "/language", ":/i18n");
+        qputenv("LC_ALL", saved);
+        QCOMPARE(translator.language(), QString("en"));
     }
 
     void translatorFollowsTheLanguageFile()

@@ -21,11 +21,26 @@ Translator::Translator(const QString &languageFile, const QString &catalogDirect
     reload();
 }
 
-// One registry code on the first line; anything else, or no file, is English.
+// The system's message language when Omarchy has none picked: LC_ALL, then LC_MESSAGES,
+// then LANG, as the C library reads them ("fr_FR.UTF-8" → "fr"); C and POSIX are English.
+static QString systemLanguage() {
+    for (const char *name : {"LC_ALL", "LC_MESSAGES", "LANG"}) {
+        const QString value = qEnvironmentVariable(name);
+        if (value.isEmpty())
+            continue;
+        static const QRegularExpression code("^([a-z]{2,3})(?:_[A-Z]{2})?(?:[.@].*)?$");
+        const QRegularExpressionMatch match = code.match(value);
+        return match.hasMatch() ? match.captured(1) : "en";
+    }
+    return "en";
+}
+
+// One registry code on the first line; anything else is English. With no file (no language
+// picked in Omarchy), the system locale decides.
 QString Translator::readLanguage(const QString &path) {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly))
-        return "en";
+        return systemLanguage();
     const QString code = QString::fromUtf8(file.readLine()).trimmed();
     static const QRegularExpression valid("^[a-z]{2,3}(-[A-Za-z]{2})?$");
     return valid.match(code).hasMatch() ? code : "en";
