@@ -93,6 +93,7 @@ ColumnLayout {
                     Label {
                         Layout.fillWidth: true
                         text: row.modelData.name
+                        textFormat: Text.PlainText // the user's name for it
                         elide: Text.ElideRight
                     }
                     Label {
@@ -134,6 +135,7 @@ ColumnLayout {
         id: fromSelectionError
         objectName: "fromSelectionError"
         Layout.fillWidth: true
+        textFormat: Text.PlainText
         visible: text !== ""
         wrapMode: Text.WordWrap
         font.pixelSize: 11

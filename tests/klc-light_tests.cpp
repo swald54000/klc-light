@@ -2242,6 +2242,58 @@ private slots:
         QCOMPARE(ui.run.backend->profiles(), QStringList({"B", "Tron"}));
     }
 
+    // Names come from the user: a tag in one is shown as typed, never as rich text.
+    void uiNamesArePlainText()
+    {
+        Ui ui([](EditorRun &run) { seed(run, {"<b>P</b>"}, "<b>P</b>"); });
+        QCOMPARE(ui.run.backend->profileName(), QString("<b>P</b>"));
+        makeGroup(ui.run.backend, "<i>G</i>", {"KEY_Q"});
+        ui.run.backend->select({"KEY_W"}, false); // shows the add-to-group box
+        ui.run.backend->setColor(QColor("#123456"));
+        QQuickItem *root = ui.window->contentItem();
+        for (const char *name : {"profileBox", "addToGroupBox"}) {
+            QQuickItem *box = findItem(root, name);
+            QVERIFY2(box, name);
+            QTRY_VERIFY(box->isVisible());
+            QObject *popup = box->property("popup").value<QObject *>();
+            QVERIFY(popup);
+            QMetaObject::invokeMethod(popup, "open");
+            QTRY_VERIFY(popup->property("opened").toBool());
+            QTest::qWait(50);
+            int shown = 0;
+            std::function<void(QQuickItem *)> walk = [&](QQuickItem *item) {
+                if (item->inherits("QQuickText") && item->isVisible()) {
+                    const QString text = item->property("text").toString();
+                    if (text.contains("<b>") || text.contains("<i>")) {
+                        ++shown;
+                        QVERIFY2(item->property("textFormat").toInt() == 0, qPrintable(text)); // Text.PlainText
+                    }
+                }
+                for (QQuickItem *child : item->childItems())
+                    walk(child);
+            };
+            walk(root);
+            QVERIFY2(shown >= 2, qPrintable(QString("%1: %2 names shown").arg(name).arg(shown)));
+            QMetaObject::invokeMethod(popup, "close");
+            QTRY_VERIFY(!popup->property("visible").toBool());
+        }
+        // The dialogs and the delete confirmation name the profile too.
+        QTest::mouseClick(ui.window, Qt::LeftButton, {}, itemCentre(findItem(root, "deleteProfileButton")));
+        auto *dialog = ui.window->findChild<QObject *>("deleteProfileDialog");
+        QTRY_VERIFY(dialog->property("opened").toBool());
+        int shown = 0;
+        std::function<void(QQuickItem *)> walk = [&](QQuickItem *item) {
+            if (item->inherits("QQuickText") && item->isVisible() && item->property("text").toString().contains("<b>")) {
+                ++shown;
+                QVERIFY2(item->property("textFormat").toInt() == 0, qPrintable(item->property("text").toString()));
+            }
+            for (QQuickItem *child : item->childItems())
+                walk(child);
+        };
+        walk(root);
+        QVERIFY(shown >= 1);
+    }
+
     void uiDeleteProfileConfirms()
     {
         Ui ui([](EditorRun &run) { seed(run, {"A", "B"}, "A"); });

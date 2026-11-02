@@ -68,6 +68,7 @@ ApplicationWindow {
                     Label {
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
+                        textFormat: Text.PlainText // messages quote profile and group names
                         text: backend.error !== "" ? backend.error : backend.notice
                     }
                     ToolButton {

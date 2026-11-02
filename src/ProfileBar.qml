@@ -110,6 +110,7 @@ RowLayout {
         id: themeNote
         objectName: "themeNote"
         visible: text !== ""
+        textFormat: Text.PlainText
         font.pixelSize: 11
         color: "#e0c060"
         elide: Text.ElideRight
@@ -161,6 +162,7 @@ RowLayout {
         Label {
             width: parent.width
             wrapMode: Text.WordWrap
+            textFormat: Text.PlainText // profile names are the user's
             text: bar.pendingAction === "new"
                   ? qsTr("Save the changes to “%1” before creating a new profile?").arg(backend.profileName)
                   : qsTr("Save the changes to “%1” before opening “%2”?").arg(backend.profileName).arg(bar.pendingProfile)
@@ -201,6 +203,7 @@ RowLayout {
             Label {
                 objectName: "profileNameError"
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 visible: profileNameDialog.problem !== ""
                 text: profileNameDialog.problem
                 color: "#ff8a80"
@@ -243,6 +246,7 @@ RowLayout {
         Label {
             width: parent.width
             wrapMode: Text.WordWrap
+            textFormat: Text.PlainText
             text: qsTr("“%1” will be deleted.").arg(backend.profileName)
                   + (backend.linkedTheme !== "" ? " " + qsTr("The theme %1 loses its link.").arg(backend.linkedTheme) : "")
         }

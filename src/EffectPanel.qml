@@ -81,6 +81,7 @@ GridLayout {
                 id: newGroupError
                 objectName: "newGroupError"
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 visible: text !== ""
                 wrapMode: Text.WordWrap
                 font.pixelSize: 11
@@ -122,6 +123,7 @@ GridLayout {
             id: groupNameError
             objectName: "groupNameError"
             Layout.fillWidth: true
+            textFormat: Text.PlainText
             visible: text !== ""
             wrapMode: Text.WordWrap
             font.pixelSize: 11
