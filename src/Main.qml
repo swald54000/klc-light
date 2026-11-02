@@ -258,19 +258,26 @@ ApplicationWindow {
         }
     }
 
-    Dialog {
+    OpaqueDialog {
         id: quitDialog
         objectName: "quitDialog"
+        width: 420
         anchors.centerIn: parent
-        modal: true
         title: qsTr("Quit with unsaved changes?")
         Label { text: qsTr("Your changes have not been saved.") }
-        standardButtons: Dialog.Save | Dialog.Discard | Dialog.Cancel
-        // Same reason as FlatComboBox: Material's elevation effect hides the background.
-        background: Rectangle {
-            color: Material.dialogColor
-            radius: Math.min(4, theme.radius)
-            border.color: Qt.rgba(1, 1, 1, 0.12)
+        footer: DialogButtonBox {
+            Button {
+                text: qsTr("Save")
+                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+            }
+            Button {
+                text: qsTr("Discard")
+                DialogButtonBox.buttonRole: DialogButtonBox.DestructiveRole
+            }
+            Button {
+                text: qsTr("Cancel")
+                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+            }
         }
         onAccepted: {
             if (backend.save()) {

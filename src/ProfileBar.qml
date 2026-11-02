@@ -24,7 +24,8 @@ RowLayout {
     }
     function openName(mode) {
         nameMode = mode
-        profileNameField.text = mode === "rename" ? backend.profileName : ""
+        profileNameField.text = mode === "rename" ? backend.profileName
+                              : mode === "duplicate" ? qsTr("%1 (copy)").arg(backend.profileName) : ""
         profileNameDialog.open()
         profileNameField.forceActiveFocus()
     }
@@ -113,37 +114,46 @@ RowLayout {
         }
     }
 
-    Dialog {
+    OpaqueDialog {
         id: switchDialog
         objectName: "switchDialog"
         width: 420
         anchors.centerIn: Overlay.overlay
-        modal: true
         title: qsTr("Unsaved changes")
-        standardButtons: Dialog.Save | Dialog.Discard | Dialog.Cancel
+        footer: DialogButtonBox {
+            Button {
+                objectName: "switchSave"
+                text: qsTr("Save")
+                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+            }
+            Button {
+                objectName: "switchDiscard"
+                text: qsTr("Discard")
+                DialogButtonBox.buttonRole: DialogButtonBox.DestructiveRole
+            }
+            Button {
+                objectName: "switchCancel"
+                text: qsTr("Cancel")
+                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+            }
+        }
         Label {
             width: parent.width
             wrapMode: Text.WordWrap
             text: qsTr("Save the changes to “%1” before opening “%2”?").arg(backend.profileName).arg(bar.pendingProfile)
         }
-        background: Rectangle {
-            color: Material.dialogColor
-            radius: Math.min(4, theme.radius)
-            border.color: Qt.rgba(1, 1, 1, 0.12)
-        }
         onAccepted: { if (backend.save()) backend.openProfile(bar.pendingProfile) }
         onDiscarded: { switchDialog.close(); backend.openProfile(bar.pendingProfile) }
     }
 
-    Dialog {
+    OpaqueDialog {
         id: profileNameDialog
         objectName: "profileNameDialog"
         width: 360
         anchors.centerIn: Overlay.overlay
-        modal: true
         title: bar.nameMode === "new" ? qsTr("New profile")
              : bar.nameMode === "duplicate" ? qsTr("Duplicate profile") : qsTr("Rename profile")
-        readonly property string problem: profileNameField.text.trim() === "" ? "" : backend.nameError(profileNameField.text)
+        readonly property string problem: backend.nameError(profileNameField.text)
         readonly property bool valid: profileNameField.text.trim() !== "" && problem === ""
         function confirm() {
             if (!valid)
@@ -187,31 +197,29 @@ RowLayout {
                 onClicked: profileNameDialog.close()
             }
         }
-        background: Rectangle {
-            color: Material.dialogColor
-            radius: Math.min(4, theme.radius)
-            border.color: Qt.rgba(1, 1, 1, 0.12)
-        }
     }
 
-    Dialog {
+    OpaqueDialog {
         id: deleteProfileDialog
         objectName: "deleteProfileDialog"
         width: 360
         anchors.centerIn: Overlay.overlay
-        modal: true
         title: qsTr("Delete this profile?")
-        standardButtons: Dialog.Ok | Dialog.Cancel
+        footer: DialogButtonBox {
+            Button {
+                text: qsTr("Delete")
+                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+            }
+            Button {
+                text: qsTr("Cancel")
+                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+            }
+        }
         Label {
             width: parent.width
             wrapMode: Text.WordWrap
             text: qsTr("“%1” will be deleted.").arg(backend.profileName)
                   + (backend.linkedTheme !== "" ? " " + qsTr("The theme %1 loses its link.").arg(backend.linkedTheme) : "")
-        }
-        background: Rectangle {
-            color: Material.dialogColor
-            radius: Math.min(4, theme.radius)
-            border.color: Qt.rgba(1, 1, 1, 0.12)
         }
         onAccepted: backend.deleteProfile()
     }

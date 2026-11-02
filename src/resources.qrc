@@ -6,6 +6,7 @@
         <file alias="EffectPanel.qml">EffectPanel.qml</file>
         <file alias="ColorPicker.qml">ColorPicker.qml</file>
         <file alias="ProfileBar.qml">ProfileBar.qml</file>
+        <file alias="OpaqueDialog.qml">OpaqueDialog.qml</file>
         <file alias="FlatComboBox.qml">FlatComboBox.qml</file>
         <file alias="i18n/en.json">i18n/en.json</file>
         <file alias="i18n/fr.json">i18n/fr.json</file>

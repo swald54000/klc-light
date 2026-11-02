@@ -1916,6 +1916,27 @@ private slots:
         QCOMPARE(ui.run.backend->baseSummary().value("color").value<QColor>(), QColor("#123456"));
     }
 
+    void uiSwitchDialogButtonsAreFrench()
+    {
+        Ui ui([](EditorRun &run) { seed(run, {"A", "B"}, "A"); });
+        QCoreApplication::installTranslator(&ui.translator);
+        QObject::connect(&ui.translator, &Translator::changed, &ui.engine, &QQmlEngine::retranslate);
+        write(ui.langDir.path() + "/language", "fr\n");
+        ui.run.backend->setColor(QColor("#123456"));
+        QQuickItem *box = findItem(ui.window->contentItem(), "profileBox");
+        QMetaObject::invokeMethod(box, "activated", Q_ARG(int, 1));
+        auto *dialog = ui.window->findChild<QObject *>("switchDialog");
+        QTRY_VERIFY(dialog->property("opened").toBool());
+        QQuickItem *save = findItem(ui.window->contentItem(), "switchSave");
+        QQuickItem *discard = findItem(ui.window->contentItem(), "switchDiscard");
+        QQuickItem *cancel = findItem(ui.window->contentItem(), "switchCancel");
+        QVERIFY(save && discard && cancel);
+        QTRY_COMPARE(save->property("text").toString(), QString("Enregistrer"));
+        QCOMPARE(discard->property("text").toString(), QString("Abandonner"));
+        QCOMPARE(cancel->property("text").toString(), QString("Annuler"));
+        QCoreApplication::removeTranslator(&ui.translator);
+    }
+
     void uiSaveShortcut()
     {
         Ui ui;
@@ -1950,6 +1971,9 @@ private slots:
         QVERIFY(ok);
         QQuickItem *error = findItem(ui.window->contentItem(), "profileNameError");
         QVERIFY(error);
+        QVERIFY(error->isVisible()); // empty name
+        QVERIFY2(error->property("text").toString().contains("empty"), qPrintable(error->property("text").toString()));
+        QVERIFY(!ok->isEnabled());
         field->setProperty("text", "B");
         QTRY_VERIFY(error->isVisible());
         QVERIFY(!ok->isEnabled());
@@ -1976,6 +2000,7 @@ private slots:
         QTRY_VERIFY(!field->isVisible());
         QTest::mouseClick(ui.window, Qt::LeftButton, {}, itemCentre(findItem(ui.window->contentItem(), "duplicateProfileButton")));
         QTRY_VERIFY(field->isVisible());
+        QCOMPARE(field->property("text").toString(), QString("Z (copy)"));
         field->setProperty("text", "Z2");
         QTRY_VERIFY(ok->isEnabled());
         QMetaObject::invokeMethod(ok, "clicked");
