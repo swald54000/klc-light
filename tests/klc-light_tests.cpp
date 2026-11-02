@@ -1057,11 +1057,25 @@ private slots:
     }
 
 
+    // A library profile with a plain colour, optionally linked to a theme.
+    static void addProfile(const QTemporaryDir &dir, const QString &name, const QString &color, const QString &theme = {})
+    {
+        Library lib(dir.path() + "/klc");
+        Profile profile;
+        profile.base.color = QColor(color);
+        QString error;
+        QVERIFY(lib.save(fromLighting(profile, name), &error));
+        if (!theme.isEmpty())
+            lib.link(name, theme);
+    }
+
     void cliCheck()
     {
         QTemporaryDir dir;
         const ThemePaths paths = fakeTheme(dir, "tron");
         write(paths.stateTheme + "/keyboard.effect", "tron\n");
+        QDir().mkpath(paths.userThemes + "/tron");
+        write(paths.userThemes + "/tron/keyboard.effect", "tron\n");
         CliRun run(dir, paths);
         QCOMPARE(run.exec({"apply", "--check"}), 0);
         QVERIFY2(run.out.contains("12 packets OK"), qPrintable(run.out));
@@ -1083,6 +1097,7 @@ private slots:
     void cliNothing()
     {
         QTemporaryDir dir;
+        addProfile(dir, "Ares", "#111111");
         CliRun run(dir, fakeTheme(dir, "tokyo-night"));
         QCOMPARE(run.exec({"apply"}), 0);
         QVERIFY(run.log.events.isEmpty());
@@ -1092,9 +1107,9 @@ private slots:
     {
         QTemporaryDir dir;
         const ThemePaths paths = fakeTheme(dir, "tokyo-night");
-        write(paths.stateTheme + "/keyboard.rgb", "#7aa2f7\n");
+        addProfile(dir, "Tokyo", "#7aa2f7", "tokyo-night");
         CliRun run(dir, paths);
-        QCOMPARE(run.exec({"apply"}), 0);
+        QCOMPARE(run.exec({"apply", "--theme"}), 0);
         QCOMPARE(run.log.events.count("send"), 5);
     }
 
@@ -1102,13 +1117,137 @@ private slots:
     {
         QTemporaryDir dir;
         const ThemePaths paths = fakeTheme(dir, "tron");
-        write(paths.stateTheme + "/keyboard.effect", "tron\n");
+        QDir().mkpath(paths.userThemes + "/tron");
+        write(paths.userThemes + "/tron/keyboard.effect", "tron\n");
         CliRun run(dir, paths);
         QCOMPARE(run.exec({"apply", "--check", "--json"}), 0);
         const QJsonObject result = QJsonDocument::fromJson(run.out.toUtf8()).object();
         QCOMPARE(result.value("ok").toBool(), true);
         QCOMPARE(result.value("packets").toInt(), 12);
-        QCOMPARE(result.value("source").toString(), paths.stateTheme + "/keyboard.effect");
+        QCOMPARE(result.value("source").toString(), QString("Tron"));
+    }
+
+    void cliThemeLinked()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Ares", "#111111");
+        addProfile(dir, "Tron", "#222222", "tron");
+        Library(dir.path() + "/klc").setApplied("Ares");
+        CliRun run(dir, paths);
+        QCOMPARE(run.exec({"apply", "--theme"}), 0);
+        QVERIFY(run.log.events.contains("open"));
+        QCOMPARE(run.log.packets.first().mid(4, 3), QByteArray::fromHex("222222"));
+        QCOMPARE(Library(dir.path() + "/klc").applied(), QString("Tron"));
+    }
+
+    void cliThemeUnlinked()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "gruvbox");
+        addProfile(dir, "Ares", "#111111", "tron");
+        Library(dir.path() + "/klc").setApplied("Ares");
+        CliRun run(dir, paths);
+        QCOMPARE(run.exec({"apply", "--theme"}), 0);
+        QVERIFY(!run.log.events.contains("open"));
+        QCOMPARE(Library(dir.path() + "/klc").applied(), QString("Ares"));
+    }
+
+    void cliBootApplied()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Ares", "#111111");
+        addProfile(dir, "Tron", "#222222", "tron");
+        Library(dir.path() + "/klc").setApplied("Ares");
+        CliRun run(dir, paths);
+        QCOMPARE(run.exec({"apply"}), 0);
+        QCOMPARE(run.log.packets.first().mid(4, 3), QByteArray::fromHex("111111"));
+    }
+
+    void cliBootNothingApplied()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Ares", "#111111");
+        addProfile(dir, "Tron", "#222222", "tron");
+        Library(dir.path() + "/klc").setApplied("");
+        CliRun run(dir, paths);
+        QCOMPARE(run.exec({"apply"}), 0);
+        QCOMPARE(run.log.packets.first().mid(4, 3), QByteArray::fromHex("222222"));
+    }
+
+    void cliByName()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Ares", "#111111");
+        addProfile(dir, "Tron", "#222222", "tron");
+        CliRun run(dir, paths);
+        QCOMPARE(run.exec({"apply", "ares"}), 0);
+        QCOMPARE(run.log.packets.first().mid(4, 3), QByteArray::fromHex("111111"));
+        QCOMPARE(Library(dir.path() + "/klc").applied(), QString("Ares"));
+        CliRun other(dir, paths);
+        QCOMPARE(other.exec({"apply", "Inconnu"}), 1);
+        QVERIFY2(other.err.contains("Inconnu"), qPrintable(other.err));
+        QVERIFY(!other.log.events.contains("open"));
+    }
+
+    void cliByPath()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Ares", "#111111");
+        Library(dir.path() + "/klc").setApplied("Ares");
+        const QString file = dir.path() + "/x.json";
+        write(file, "{\"version\":1,\"base\":{\"type\":\"static\",\"color\":\"#334455\"}}");
+        CliRun run(dir, paths);
+        QCOMPARE(run.exec({"apply", file}), 0);
+        QCOMPARE(run.log.packets.first().mid(4, 3), QByteArray::fromHex("334455"));
+        QCOMPARE(Library(dir.path() + "/klc").applied(), QString("Ares"));
+        // A version 2 document works too.
+        Profile profile;
+        profile.base.color = QColor("#556677");
+        QString error;
+        const QString file2 = dir.path() + "/y.json";
+        QVERIFY(saveDocument(fromLighting(profile, "Y"), file2, &error));
+        CliRun again(dir, paths);
+        QCOMPARE(again.exec({"apply", file2}), 0);
+        QCOMPARE(again.log.packets.first().mid(4, 3), QByteArray::fromHex("556677"));
+    }
+
+    void cliMigratesFirst()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        QDir().mkpath(paths.userThemes + "/tron");
+        write(paths.userThemes + "/tron/keyboard.klc.json", "{\"version\":1,\"base\":{\"type\":\"static\",\"color\":\"#112233\"}}");
+        CliRun run(dir, paths);
+        QCOMPARE(run.exec({"apply", "--theme"}), 0);
+        QCOMPARE(run.log.packets.first().mid(4, 3), QByteArray::fromHex("112233"));
+        QCOMPARE(Library(dir.path() + "/klc").names(), QStringList{"Tron"});
+    }
+
+    void cliThemeRapidSwitchLinked()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "a");
+        addProfile(dir, "A", "#111111", "a");
+        addProfile(dir, "B", "#222222", "b");
+        addProfile(dir, "C", "#333333", "c");
+        CliRun run(dir, paths);
+        QCOMPARE(run.exec({"apply", "--theme"}), 0);
+        write(paths.themeName, "b\n");
+        run.log.now += 1000;
+        run.onSleep = [&](int ms) {
+            if (ms > Device::PacketGapMs)
+                write(paths.themeName, "c\n");
+        };
+        run.log.packets.clear();
+        QCOMPARE(run.exec({"apply", "--theme"}), 0);
+        QVERIFY(!run.log.packets.isEmpty());
+        QCOMPARE(run.log.packets.first().mid(4, 3), QByteArray::fromHex("333333"));
+        QCOMPARE(Library(dir.path() + "/klc").applied(), QString("C"));
     }
 
 
@@ -1323,31 +1462,6 @@ private slots:
         transitions(def, &error);
         QVERIFY2(error.contains("65535"), qPrintable(error));
     }
-
-    void cliRapidThemeSwitch()
-    {
-        // Theme A is applied; theme B's apply starts within the interval, and while it
-        // waits the theme switches to C. C must be what reaches the keyboard.
-        QTemporaryDir dir;
-        const ThemePaths paths = fakeTheme(dir, "a");
-        write(paths.stateTheme + "/keyboard.rgb", "#111111\n");
-        CliRun run(dir, paths);
-        QCOMPARE(run.exec({"apply"}), 0);
-        write(paths.themeName, "b\n");
-        write(paths.stateTheme + "/keyboard.rgb", "#222222\n");
-        run.log.now += 1000;
-        run.onSleep = [&](int ms) {
-            if (ms > Device::PacketGapMs) {
-                write(paths.themeName, "c\n");
-                write(paths.stateTheme + "/keyboard.rgb", "#333333\n");
-            }
-        };
-        run.log.packets.clear();
-        QCOMPARE(run.exec({"apply"}), 0);
-        QVERIFY(!run.log.packets.isEmpty());
-        QCOMPARE(run.log.packets.first().mid(4, 3), QByteArray::fromHex("333333"));
-    }
-
 
     void uiBaseTypeChoicesVisible()
     {
@@ -1619,11 +1733,11 @@ private slots:
     {
         QTemporaryDir dir;
         const ThemePaths paths = fakeTheme(dir, "tokyo-night");
-        write(paths.stateTheme + "/keyboard.rgb", "#7aa2f7\n");
+        addProfile(dir, "Tokyo", "#7aa2f7", "tokyo-night");
         CliRun run(dir, paths);
         run.binder.bindOk = false;
         run.binder.bindError = "SteelSeries KLC (1038:113a) not found";
-        QCOMPARE(run.exec({"apply"}), 2);
+        QCOMPARE(run.exec({"apply", "--theme"}), 2);
         QVERIFY(run.err.contains("-71"));
     }
 
@@ -1725,7 +1839,7 @@ private:
               device(transport, binder, dir.path(),
                      [this](int ms) { log.sleeps << ms; log.now += ms; if (onSleep) onSleep(ms); },
                      [this] { return log.now; }),
-              outStream(&out), errStream(&err), env{paths, &device, &outStream, &errStream} {}
+              outStream(&out), errStream(&err), env{paths, dir.path() + "/klc", &device, &outStream, &errStream} {}
         int exec(const QStringList &args) {
             const int code = runCli(args, env);
             outStream.flush();

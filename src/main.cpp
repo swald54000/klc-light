@@ -36,7 +36,7 @@ int runCommand(int argc, char *argv[]) {
     Device device(transport, binder, runtime, [](int ms) { QThread::msleep(ms); });
 
     QTextStream out(stdout), err(stderr);
-    CliEnv env{ThemePaths::standard(), &device, &out, &err};
+    CliEnv env{ThemePaths::standard(), QDir::homePath() + "/.config/klc-light", &device, &out, &err};
     return runCli(args, env);
 }
 
