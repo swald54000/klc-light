@@ -1854,6 +1854,203 @@ private slots:
         QCOMPARE(pixel, background->property("color").value<QColor>());
     }
 
+    // ---- Profile bar and Save ----
+
+    static QVariant callText(QQuickItem *box, int i)
+    {
+        QString text;
+        QMetaObject::invokeMethod(box, "textAt", Q_RETURN_ARG(QString, text), Q_ARG(int, i));
+        return text;
+    }
+
+    void uiProfileBoxListsProfiles()
+    {
+        Ui ui([](EditorRun &run) { seed(run, {"A", "B"}, "B"); });
+        QQuickItem *box = nullptr;
+        QTRY_VERIFY((box = findItem(ui.window->contentItem(), "profileBox")) != nullptr);
+        QTRY_COMPARE(box->property("count").toInt(), 2);
+        QVERIFY(!callText(box, 0).toString().contains("applied"));
+        QVERIFY2(callText(box, 1).toString().contains("applied"), qPrintable(callText(box, 1).toString()));
+        QCOMPARE(box->property("currentIndex").toInt(), 1); // the open profile: the applied one
+    }
+
+    void uiSwitchWithChangesAsks()
+    {
+        Ui ui([](EditorRun &run) { seed(run, {"A", "B"}, "A"); });
+        QCOMPARE(ui.run.backend->profileName(), QString("A"));
+        ui.run.backend->setColor(QColor("#123456"));
+        QQuickItem *box = findItem(ui.window->contentItem(), "profileBox");
+        QVERIFY(box);
+        box->setProperty("currentIndex", 1);
+        QMetaObject::invokeMethod(box, "activated", Q_ARG(int, 1));
+        auto *dialog = ui.window->findChild<QObject *>("switchDialog");
+        QVERIFY(dialog);
+        QTRY_VERIFY(dialog->property("opened").toBool());
+        QCOMPARE(ui.run.backend->profileName(), QString("A"));
+        QMetaObject::invokeMethod(dialog, "discarded");
+        QTRY_COMPARE(ui.run.backend->profileName(), QString("B"));
+        QVERIFY(!ui.run.backend->dirty());
+        QTRY_COMPARE(box->property("currentIndex").toInt(), 1);
+    }
+
+    void uiSwitchWithoutChangesOpens()
+    {
+        Ui ui([](EditorRun &run) { seed(run, {"A", "B"}, "A"); });
+        QQuickItem *box = findItem(ui.window->contentItem(), "profileBox");
+        QVERIFY(box);
+        QMetaObject::invokeMethod(box, "activated", Q_ARG(int, 1));
+        QTRY_COMPARE(ui.run.backend->profileName(), QString("B"));
+    }
+
+    void uiSwitchSaveKeepsChanges()
+    {
+        Ui ui([](EditorRun &run) { seed(run, {"A", "B"}, "A"); });
+        ui.run.backend->setColor(QColor("#123456"));
+        QQuickItem *box = findItem(ui.window->contentItem(), "profileBox");
+        QMetaObject::invokeMethod(box, "activated", Q_ARG(int, 1));
+        auto *dialog = ui.window->findChild<QObject *>("switchDialog");
+        QTRY_VERIFY(dialog->property("opened").toBool());
+        QMetaObject::invokeMethod(dialog, "accepted");
+        QTRY_COMPARE(ui.run.backend->profileName(), QString("B"));
+        ui.run.backend->openProfile("A");
+        QCOMPARE(ui.run.backend->baseSummary().value("color").value<QColor>(), QColor("#123456"));
+    }
+
+    void uiSaveShortcut()
+    {
+        Ui ui;
+        ui.run.backend->setColor(QColor("#123456"));
+        QVERIFY(ui.run.backend->dirty());
+        QTest::keySequence(ui.window, QKeySequence::Save);
+        QTRY_VERIFY(!ui.run.backend->dirty());
+        QCOMPARE(ui.run.sent.load(), 0);
+    }
+
+    void uiSaveButtonEnabledWhenDirty()
+    {
+        Ui ui;
+        QQuickItem *button = findItem(ui.window->contentItem(), "saveButton");
+        QVERIFY(button);
+        QVERIFY(!button->isEnabled());
+        ui.run.backend->setColor(QColor("#123456"));
+        QTRY_VERIFY(button->isEnabled());
+        QMetaObject::invokeMethod(button, "clicked");
+        QTRY_VERIFY(!ui.run.backend->dirty());
+    }
+
+    void uiNewProfileNameValidation()
+    {
+        Ui ui([](EditorRun &run) { seed(run, {"A", "B"}, "A"); });
+        QQuickItem *button = findItem(ui.window->contentItem(), "newProfileButton");
+        QVERIFY(button);
+        QTest::mouseClick(ui.window, Qt::LeftButton, {}, itemCentre(button));
+        QQuickItem *field = nullptr;
+        QTRY_VERIFY((field = findItem(ui.window->contentItem(), "profileNameField")) && field->isVisible());
+        QQuickItem *ok = findItem(ui.window->contentItem(), "profileNameOk");
+        QVERIFY(ok);
+        QQuickItem *error = findItem(ui.window->contentItem(), "profileNameError");
+        QVERIFY(error);
+        field->setProperty("text", "B");
+        QTRY_VERIFY(error->isVisible());
+        QVERIFY(!ok->isEnabled());
+        field->setProperty("text", "C");
+        QTRY_VERIFY(!error->isVisible());
+        QVERIFY(ok->isEnabled());
+        QMetaObject::invokeMethod(ok, "clicked");
+        QTRY_COMPARE(ui.run.backend->profileName(), QString("C"));
+        QCOMPARE(ui.run.backend->profiles(), QStringList({"A", "B", "C"}));
+    }
+
+    void uiRenameAndDuplicateProfile()
+    {
+        Ui ui([](EditorRun &run) { seed(run, {"A"}, "A"); });
+        QTest::mouseClick(ui.window, Qt::LeftButton, {}, itemCentre(findItem(ui.window->contentItem(), "renameProfileButton")));
+        QQuickItem *field = nullptr;
+        QTRY_VERIFY((field = findItem(ui.window->contentItem(), "profileNameField")) && field->isVisible());
+        QCOMPARE(field->property("text").toString(), QString("A"));
+        field->setProperty("text", "Z");
+        QQuickItem *ok = findItem(ui.window->contentItem(), "profileNameOk");
+        QTRY_VERIFY(ok->isEnabled());
+        QMetaObject::invokeMethod(ok, "clicked");
+        QTRY_COMPARE(ui.run.backend->profileName(), QString("Z"));
+        QTRY_VERIFY(!field->isVisible());
+        QTest::mouseClick(ui.window, Qt::LeftButton, {}, itemCentre(findItem(ui.window->contentItem(), "duplicateProfileButton")));
+        QTRY_VERIFY(field->isVisible());
+        field->setProperty("text", "Z2");
+        QTRY_VERIFY(ok->isEnabled());
+        QMetaObject::invokeMethod(ok, "clicked");
+        QTRY_COMPARE(ui.run.backend->profileName(), QString("Z2"));
+        QCOMPARE(ui.run.backend->profiles(), QStringList({"Z", "Z2"}));
+    }
+
+    void uiDeleteProfileConfirms()
+    {
+        Ui ui([](EditorRun &run) { seed(run, {"A", "B"}, "A"); });
+        ui.run.backend->linkTheme("tokyo-night");
+        QTest::mouseClick(ui.window, Qt::LeftButton, {}, itemCentre(findItem(ui.window->contentItem(), "deleteProfileButton")));
+        auto *dialog = ui.window->findChild<QObject *>("deleteProfileDialog");
+        QVERIFY(dialog);
+        QTRY_VERIFY(dialog->property("opened").toBool());
+        QCOMPARE(ui.run.backend->profiles().size(), 2);
+        QMetaObject::invokeMethod(dialog, "accepted");
+        QTRY_COMPARE(ui.run.backend->profiles(), QStringList({"B"}));
+    }
+
+    void uiThemeBoxLinks()
+    {
+        Ui ui([](EditorRun &run) {
+            seed(run, {"A"}, "A");
+            QDir().mkpath(run.paths.stockThemes + "/tron");
+        });
+        QQuickItem *box = findItem(ui.window->contentItem(), "themeBox");
+        QVERIFY(box);
+        QVERIFY(box->property("count").toInt() >= 2); // none + tron
+        int index = -1;
+        for (int i = 0; i < box->property("count").toInt(); ++i)
+            if (callText(box, i).toString() == "tron")
+                index = i;
+        QVERIFY(index > 0);
+        box->setProperty("currentIndex", index);
+        QMetaObject::invokeMethod(box, "activated", Q_ARG(int, index));
+        QTRY_COMPARE(ui.run.backend->linkedTheme(), QString("tron"));
+        QCOMPARE(box->property("currentIndex").toInt(), index);
+        // Back to none.
+        QMetaObject::invokeMethod(box, "activated", Q_ARG(int, 0));
+        QTRY_COMPARE(ui.run.backend->linkedTheme(), QString());
+    }
+
+    void uiThemeLinkedElsewhereNotes()
+    {
+        Ui ui([](EditorRun &run) {
+            seed(run, {"A", "B"}, "A");
+            QDir().mkpath(run.paths.stockThemes + "/tron");
+        });
+        QCOMPARE(ui.run.backend->linkTheme("tron"), QString());
+        QQuickItem *box = findItem(ui.window->contentItem(), "themeBox");
+        ui.run.backend->openProfile("B");
+        int index = -1;
+        for (int i = 0; i < box->property("count").toInt(); ++i)
+            if (callText(box, i).toString() == "tron")
+                index = i;
+        QMetaObject::invokeMethod(box, "activated", Q_ARG(int, index));
+        QQuickItem *note = nullptr;
+        QTRY_VERIFY((note = findItem(ui.window->contentItem(), "themeNote")) && note->isVisible());
+        QVERIFY2(note->property("text").toString().contains("A"), qPrintable(note->property("text").toString()));
+    }
+
+    void uiQuitSaveSaves()
+    {
+        Ui ui;
+        ui.run.backend->setColor(QColor("#123456"));
+        QMetaObject::invokeMethod(ui.window, "requestQuit");
+        auto *dialog = ui.window->findChild<QObject *>("quitDialog");
+        QTRY_VERIFY(dialog->property("opened").toBool());
+        QMetaObject::invokeMethod(dialog, "accepted");
+        QTRY_VERIFY(!ui.window->isVisible());
+        QVERIFY(!ui.run.backend->dirty());
+    }
+
+
     void uiQuitDiscardCloses()
     {
         Ui ui;
@@ -2546,7 +2743,11 @@ private:
 
     // The real window, offscreen, on an editor whose sends are counted.
     struct Ui {
-        Ui() : theme(run.dir.path()), translator(langDir.path() + "/language", ":/i18n") {
+        // prepare runs before the window opens: seed the library, add themes.
+        explicit Ui(const std::function<void(EditorRun &)> &prepare = {})
+            : theme(run.dir.path()), translator(langDir.path() + "/language", ":/i18n") {
+            if (prepare)
+                prepare(run);
             static const bool styled = [] { QQuickStyle::setStyle("Material"); return true; }();
             Q_UNUSED(styled);
             engine.rootContext()->setContextProperty("translator", &translator);

@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 
-// Left column (it scrolls in a very short window): the profile, the base, the key groups, the animated-slot count and the
+// Left column (it scrolls in a very short window): the base, the key groups, the animated-slot count and the
 // reactive lighting.
 ColumnLayout {
     id: column
@@ -14,14 +14,6 @@ ColumnLayout {
     function typeName(type) {
         return ({ "static": qsTr("static"), "breathing": qsTr("breathing"), "flashing": qsTr("flashing"),
                   "rainbow": qsTr("rainbow"), "wave": qsTr("wave"), "pulse": qsTr("pulse") })[type] || type
-    }
-
-    // The profile bar comes later: for now just the open profile's name.
-    Label {
-        Layout.fillWidth: true
-        text: backend.profileName
-        font.bold: true
-        elide: Text.ElideRight
     }
 
     ItemDelegate {

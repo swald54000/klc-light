@@ -27,6 +27,7 @@ ApplicationWindow {
     Shortcut { sequence: "?"; context: Qt.ApplicationShortcut; onActivated: win.helpVisible = !win.helpVisible }
     Shortcut { sequence: "Q"; context: Qt.ApplicationShortcut; onActivated: win.requestQuit() }
     Shortcut { sequence: "Space"; context: Qt.ApplicationShortcut; onActivated: backend.apply() }
+    Shortcut { sequences: [StandardKey.Save]; context: Qt.ApplicationShortcut; onActivated: backend.save() }
     Shortcut { sequences: [StandardKey.Undo]; context: Qt.ApplicationShortcut; onActivated: backend.undo() }
     Shortcut { sequence: "Ctrl+Shift+Z"; context: Qt.ApplicationShortcut; onActivated: backend.redo() }
     Shortcut { sequence: "Esc"; context: Qt.ApplicationShortcut; onActivated: { win.helpVisible = false; backend.openBase(); backend.clearSelection() } }
@@ -78,11 +79,13 @@ ApplicationWindow {
                 }
             }
 
+            ProfileBar { objectName: "profileBar"; Layout.fillWidth: true }
+
             // The keyboard is three times wider than tall: it gets the whole width, and the
             // layers and settings sit below it.
             Pane {
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(width * 0.36, win.height * 0.38)
+                Layout.preferredHeight: Math.min(width * 0.36, win.height * 0.34)
                 padding: 6
                 KeyboardView { objectName: "keyboardView"; anchors.fill: parent }
             }
@@ -189,6 +192,15 @@ ApplicationWindow {
                     ToolTip.visible: hovered
                 }
                 Button {
+                    objectName: "saveButton"
+                    text: qsTr("Save")
+                    flat: true
+                    enabled: backend.dirty && !backend.busy
+                    onClicked: backend.save()
+                    ToolTip.text: "Ctrl+S"
+                    ToolTip.visible: hovered
+                }
+                Button {
                     objectName: "applyButton"
                     text: qsTr("Apply")
                     highlighted: true
@@ -251,14 +263,20 @@ ApplicationWindow {
         objectName: "quitDialog"
         anchors.centerIn: parent
         modal: true
-        title: qsTr("Quit without applying?")
-        Label { text: qsTr("Your changes have not been applied to the keyboard or saved.") }
-        standardButtons: Dialog.Discard | Dialog.Cancel
+        title: qsTr("Quit with unsaved changes?")
+        Label { text: qsTr("Your changes have not been saved.") }
+        standardButtons: Dialog.Save | Dialog.Discard | Dialog.Cancel
         // Same reason as FlatComboBox: Material's elevation effect hides the background.
         background: Rectangle {
             color: Material.dialogColor
             radius: Math.min(4, theme.radius)
             border.color: Qt.rgba(1, 1, 1, 0.12)
+        }
+        onAccepted: {
+            if (backend.save()) {
+                win.discarding = true
+                win.close()
+            }
         }
         onDiscarded: {
             win.discarding = true
