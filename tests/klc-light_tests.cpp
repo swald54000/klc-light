@@ -2358,10 +2358,13 @@ private slots:
     }
 
     // Point of the hue ring at `degrees` (counter-clockwise from the right), in scene coordinates.
+    // The middle of the ring's band, from the ring's own geometry.
     static QPointF ringPoint(QQuickItem *ring, double degrees)
     {
         const double a = qDegreesToRadians(degrees);
-        return ring->mapToScene(QPointF(75 + 63 * std::cos(a), 75 - 63 * std::sin(a)));
+        const double c = ring->property("centre").toDouble();
+        const double r = (ring->property("innerRadius").toDouble() + ring->property("outerRadius").toDouble()) / 2;
+        return ring->mapToScene(QPointF(c + r * std::cos(a), c - r * std::sin(a)));
     }
 
     static double hueDistance(const QColor &a, const QColor &b)
@@ -2621,6 +2624,46 @@ private slots:
         QVERIFY(within(bar, root));
     }
 
+    // At the default 1280x640 the whole color picker is on screen without scrolling: ring,
+    // intensity, hex field and the three RGB sliders.
+    void uiPickerVisibleDefaultWindow()
+    {
+        Ui ui;
+        QCOMPARE(ui.window->size(), QSize(1280, 640));
+        makeGroup(ui.run.backend, "One", {"KEY_Q"});
+        QCOMPARE(ui.run.backend->currentKind(), QString("group"));
+        QTest::qWait(300);
+        QQuickItem *root = ui.window->contentItem();
+        QQuickItem *scroll = findItem(root, "rightScroll");
+        QVERIFY(scroll);
+        for (const char *name : {"hueRing", "intensitySlider", "hexField", "rgbSlider0", "rgbSlider1", "rgbSlider2"}) {
+            QQuickItem *item = findItem(root, name);
+            QVERIFY2(item, name);
+            const QRectF r = item->mapRectToItem(scroll, QRectF(0, 0, item->width(), item->height()));
+            QVERIFY2(within(item, scroll), qPrintable(QString("%1 at %2,%3 %4×%5, panel %6×%7").arg(name)
+                                                          .arg(r.x()).arg(r.y()).arg(r.width()).arg(r.height())
+                                                          .arg(scroll->width()).arg(scroll->height())));
+        }
+    }
+
+    // At the minimum size the window still works: action bar on screen, no QML warning.
+    void uiMinimumWindowSmoke()
+    {
+        QTest::failOnWarning(QRegularExpression("."));
+        Ui ui;
+        makeGroup(ui.run.backend, "One", {"KEY_Q"});
+        ui.window->resize(900, 480);
+        QTest::qWait(300);
+        QCOMPARE(ui.window->size(), QSize(900, 480));
+        QQuickItem *root = ui.window->contentItem();
+        QVERIFY(within(findItem(root, "actionBar"), root));
+        for (const char *name : {"applyButton", "saveButton", "undoButton", "redoButton"})
+            QVERIFY2(within(findItem(root, name), root), name);
+        QVERIFY(findItem(root, "hexField")->isVisible());
+        ui.run.backend->openBase();
+        QTest::qWait(100);
+    }
+
     void uiBaseRowShowsType()
     {
         Ui ui;
@@ -2776,7 +2819,6 @@ private slots:
     void uiPickerFollowsGroupSwitch()
     {
         Ui ui;
-        ui.window->resize(1280, 1100);
         Backend *b = ui.run.backend;
         b->select({"KEY_A"}, false);
         QCOMPARE(b->createGroup("A"), QString());
@@ -2853,7 +2895,6 @@ private slots:
     void uiRgbSliderDragIsOneUndoStep()
     {
         Ui ui;
-        ui.window->resize(1280, 1100);
         QTest::qWait(200);
         QQuickItem *slider = findItem(ui.window->contentItem(), "rgbSlider0");
         QVERIFY(slider && slider->isVisible());
@@ -2871,7 +2912,6 @@ private slots:
     void uiRgbValueKeys()
     {
         Ui ui;
-        ui.window->resize(1280, 1100);
         QTest::qWait(200);
         QQuickItem *pk = picker(ui.window);
         QVERIFY(pk);

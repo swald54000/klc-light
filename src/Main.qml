@@ -151,6 +151,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     ScrollView {
+                        objectName: "rightScroll"
                         anchors.fill: parent
                         contentWidth: availableWidth
                         // Nothing scrolls sideways; the hidden horizontal bar still caught clicks
