@@ -2183,7 +2183,7 @@ private:
                                   [this](const QList<Packet> &) { ++sent; while (hold) QThread::msleep(5); return result; },
                                   dir.path() + "/colors.json");
         }
-        ~EditorRun() { delete backend; }
+        ~EditorRun() { hold = false; delete backend; } // release a blocked sender first
         QTemporaryDir dir;
         ThemePaths paths;
         std::atomic<int> sent{0};
