@@ -826,7 +826,7 @@ private slots:
         QDir().mkpath(paths.userThemes + "/tron");
         QDir().mkpath(paths.stockThemes + "/tokyo-night");
         write(paths.userThemes + "/tron/keyboard.klc.json", klc);
-        write(paths.userThemes + "/tron/keyboard.klc.json.essai", "{garbage");
+        write(paths.userThemes + "/tron/keyboard.klc.json.essai", QByteArray(klc).replace("112233", "abcdef"));
         write(paths.stockThemes + "/tokyo-night/keyboard.rgb", "#445566\n");
         QDir().mkpath(paths.stockThemes + "/plain");
         Library lib(dir.path() + "/klc");
@@ -838,11 +838,55 @@ private slots:
         QCOMPARE(lib.applied(), QString("Tron"));
         QStringList errors;
         QCOMPARE(lighting(*lib.load("Tokyo-night", &errors)).base.color, QColor("#445566"));
+        QCOMPARE(lighting(*lib.load("Tron", &errors)).base.color, QColor("#112233"));
         QFile file(paths.userThemes + "/tron/keyboard.klc.json");
         QVERIFY(file.open(QIODevice::ReadOnly));
         QCOMPARE(file.readAll(), klc);
         QVERIFY(!lib.migrate(paths));
         QCOMPARE(lib.names().size(), 2);
+    }
+
+    void libraryMigrateActiveThemeUnlit()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "plain");
+        QDir().mkpath(paths.userThemes + "/tron");
+        QDir().mkpath(paths.stockThemes + "/plain");
+        write(paths.userThemes + "/tron/keyboard.rgb", "#112233\n");
+        Library lib(dir.path() + "/klc");
+        QVERIFY(lib.migrate(paths));
+        QCOMPARE(lib.names(), QStringList{"Tron"});
+        QCOMPARE(lib.applied(), QString());
+    }
+
+    void libraryStateCorruptKeepsEarlierBad()
+    {
+        QTemporaryDir dir;
+        write(dir.path() + "/state.json", "{oops");
+        write(dir.path() + "/state.json.bad", "{older");
+        Library lib(dir.path());
+        lib.setApplied("X");
+        QFile older(dir.path() + "/state.json.bad");
+        QVERIFY(older.open(QIODevice::ReadOnly));
+        QCOMPARE(older.readAll(), QByteArray("{older"));
+        QFile newer(dir.path() + "/state.json.bad.2");
+        QVERIFY(newer.open(QIODevice::ReadOnly));
+        QCOMPARE(newer.readAll(), QByteArray("{oops"));
+    }
+
+    void libraryNamesCaseAndTrim()
+    {
+        QTemporaryDir dir;
+        Library lib(dir.path());
+        QString error;
+        QVERIFY(lib.save(libDoc("Tron"), &error));
+        QVERIFY(!lib.nameError("tron").isEmpty());
+        QVERIFY(lib.save(libDoc(" tron "), &error));
+        QCOMPARE(lib.names(), QStringList{"tron"});
+        QVERIFY(lib.save(libDoc("A"), &error));
+        QVERIFY2(lib.rename("A", "  B  ", &error), qPrintable(error));
+        QVERIFY(lib.names().contains("B"));
+        QVERIFY(!lib.rename("B", "TRON", &error));
     }
 
     void libraryMigrateNothing()

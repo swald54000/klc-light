@@ -28,9 +28,18 @@ Library::Library(QString dir) : m_dir(std::move(dir)) {
         return;
     const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
     if (!document.isObject()) {
+        const QByteArray corrupt = file.readAll();
         file.close();
-        QFile::remove(m_dir + "/state.json.bad");
-        file.rename(m_dir + "/state.json.bad");
+        QString bad = m_dir + "/state.json.bad";
+        for (int n = 2; QFileInfo::exists(bad); ++n)
+            bad = m_dir + "/state.json.bad." + QString::number(n);
+        if (!file.rename(bad)) {
+            // Keep the corrupt bytes before the next write replaces state.json.
+            qWarning("klc-light: cannot move %s aside: %s", qPrintable(m_dir + "/state.json"), qPrintable(file.errorString()));
+            QFile copy(bad);
+            if (!copy.open(QIODevice::WriteOnly) || copy.write(corrupt) < 0)
+                qWarning("klc-light: cannot keep a copy of the corrupt state in %s", qPrintable(bad));
+        }
         return;
     }
     const QJsonObject state = document.object(), themes = state.value("themes").toObject();
@@ -79,7 +88,7 @@ QStringList Library::names() const {
 
 std::optional<LibraryEntry> Library::find(const QString &name) const {
     for (const LibraryEntry &entry : entries())
-        if (entry.name == name)
+        if (entry.name.compare(name.trimmed(), Qt::CaseInsensitive) == 0)
             return entry;
     return std::nullopt;
 }
@@ -105,7 +114,9 @@ QString Library::fileNameFor(const QString &name, const QStringList &takenFileNa
     return candidate;
 }
 
-bool Library::save(const Document &doc, QString *error) {
+bool Library::save(const Document &saved, QString *error) {
+    Document doc = saved;
+    doc.name = doc.name.trimmed();
     QString path;
     if (const auto existing = find(doc.name)) {
         if (!existing->readable) {
@@ -125,14 +136,21 @@ bool Library::save(const Document &doc, QString *error) {
 QString Library::nameError(const QString &name, const QString &except) const {
     if (name.trimmed().isEmpty())
         return "The name is empty.";
-    if (name != except)
+    if (name.trimmed().compare(except.trimmed(), Qt::CaseInsensitive) != 0)
         for (const QString &existing : names())
-            if (existing.compare(name, Qt::CaseInsensitive) == 0)
+            if (existing.compare(name.trimmed(), Qt::CaseInsensitive) == 0)
                 return QString("A profile named \"%1\" already exists.").arg(existing);
     return QString();
 }
 
-bool Library::rename(const QString &from, const QString &to, QString *error) {
+bool Library::rename(const QString &fromName, const QString &toName, QString *error) {
+    const QString to = toName.trimmed();
+    const auto entry = find(fromName);
+    if (!entry) {
+        *error = QString("no profile named \"%1\"").arg(fromName);
+        return false;
+    }
+    const QString from = entry->name;
     if (from == to)
         return true;
     if (const QString problem = nameError(to, from); !problem.isEmpty()) {
@@ -145,7 +163,7 @@ bool Library::rename(const QString &from, const QString &to, QString *error) {
         *error = errors.join("; ");
         return false;
     }
-    const QString oldPath = find(from)->path;
+    const QString oldPath = entry->path;
     doc->name = to;
     QStringList taken;
     for (const QString &fileName : QDir(profilesDir()).entryList({"*" + kSuffix}, QDir::Files))
@@ -234,26 +252,36 @@ QString Library::link(const QString &profile, const QString &theme) {
 bool Library::migrate(const ThemePaths &paths) {
     if (QFileInfo::exists(profilesDir()))
         return false;
-    QDir().mkpath(profilesDir());
-    QString error;
+    if (!QDir().mkpath(profilesDir()))
+        qWarning("klc-light: migration: cannot create %s", qPrintable(profilesDir()));
+    QFile themeName(paths.themeName);
+    const QString active = themeName.open(QIODevice::ReadOnly) ? QString::fromUtf8(themeName.readAll()).trimmed() : QString();
+    bool any = false;
     for (const QString &theme : installedThemes(paths)) {
         QStringList errors;
         const auto profile = themeLighting(paths, theme, &errors);
+        for (const QString &problem : errors)
+            qWarning("klc-light: migration: theme %s: %s", qPrintable(theme), qPrintable(problem));
         if (!profile)
             continue;
-        QString name = capitalized(theme);
+        QString name = capitalized(theme), error;
         for (int n = 2; !nameError(name).isEmpty(); ++n)
             name = capitalized(theme) + " " + QString::number(n);
-        if (save(fromLighting(*profile, name), &error))
+        if (save(fromLighting(*profile, name), &error)) {
             link(name, theme);
+            any = true;
+        } else {
+            qWarning("klc-light: migration: theme %s: cannot save profile: %s", qPrintable(theme), qPrintable(error));
+        }
     }
-    QFile themeName(paths.themeName);
-    const QString active = themeName.open(QIODevice::ReadOnly) ? QString::fromUtf8(themeName.readAll()).trimmed() : QString();
-    QString applied = profileForTheme(active);
-    if (applied.isEmpty() && nameError("Default").isEmpty()) {
-        applied = "Default";
-        save(fromLighting(Profile(), applied), &error);
+    if (!any) {
+        QString error;
+        if (save(fromLighting(Profile(), "Default"), &error))
+            setApplied("Default");
+        else
+            qWarning("klc-light: migration: cannot save Default: %s", qPrintable(error));
+        return true;
     }
-    setApplied(applied);
+    setApplied(profileForTheme(active));
     return true;
 }
