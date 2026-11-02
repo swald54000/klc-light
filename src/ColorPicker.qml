@@ -13,8 +13,9 @@ ColumnLayout {
 
     spacing: 8
 
+    // Never assign `color` here: that would remove the owner's binding. The owner updates the
+    // model in onPicked and the new value flows back through its binding.
     function pick(c) {
-        picker.color = c
         picker.picked(c)
     }
 
@@ -126,7 +127,7 @@ ColumnLayout {
         Component.onCompleted: sync()
         Connections {
             target: picker
-            function onColorChanged() { if (!hexField.activeFocus) hexField.sync() }
+            function onColorChanged() { hexField.sync() }
         }
         onEditingFinished: {
             const m = /^\s*#?([0-9a-fA-F]{6})\s*$/.exec(text)

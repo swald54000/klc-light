@@ -2162,7 +2162,7 @@ private slots:
         Ui ui;
         auto *ring = ui.window->findChild<QQuickItem *>("hueRing");
         QVERIFY(ring && ring->isVisible());
-        ring->parentItem()->setProperty("color", QColor("#000000"));
+        ui.run.backend->setColor(QColor("#000000"));
         QTest::mouseClick(ui.window, Qt::LeftButton, {}, ringPoint(ring, 90).toPoint());
         QCOMPARE(ring->parentItem()->property("color").value<QColor>().valueF(), 1.0);
     }
@@ -2523,7 +2523,7 @@ private slots:
         Ui ui;
         QQuickItem *pk = picker(ui.window);
         QVERIFY(pk);
-        pk->setProperty("color", QColor("#102030"));
+        ui.run.backend->setColor(QColor("#102030"));
         QQuickItem *hex = findItem(ui.window->contentItem(), "hexField");
         QVERIFY(hex);
         QTRY_COMPARE(hex->property("text").toString(), QString("#102030"));
@@ -2537,6 +2537,40 @@ private slots:
         QTest::keyClick(ui.window, Qt::Key_Return);
         QCOMPARE(pk->property("color").value<QColor>(), QColor("#00e5ff"));
         QCOMPARE(hex->property("text").toString(), QString("#00E5FF"));
+    }
+
+    // The picker must follow the open group (a pick used to break its binding for good).
+    void uiPickerFollowsGroupSwitch()
+    {
+        Ui ui;
+        ui.window->resize(1280, 1100);
+        Backend *b = ui.run.backend;
+        b->select({"KEY_A"}, false);
+        QCOMPARE(b->createGroup("A"), QString());
+        b->setColor(QColor("#0000ff"));
+        b->select({"KEY_B"}, false);
+        QCOMPARE(b->createGroup("B"), QString());
+        b->setColor(QColor("#00ff00"));
+        b->openGroup(0);
+        QQuickItem *hex = findItem(ui.window->contentItem(), "hexField");
+        QQuickItem *slider0 = findItem(ui.window->contentItem(), "rgbSlider0");
+        QQuickItem *slider2 = findItem(ui.window->contentItem(), "rgbSlider2");
+        QVERIFY(hex && slider0 && slider2);
+        QTRY_COMPARE(hex->property("text").toString(), QString("#0000FF"));
+        // Change A through the hex field.
+        hex->forceActiveFocus();
+        hex->setProperty("text", "ff8000");
+        QTest::keyClick(ui.window, Qt::Key_Return);
+        QTRY_COMPARE(hex->property("text").toString(), QString("#FF8000"));
+        QCOMPARE(slider0->property("value").toInt(), 255);
+        b->openGroup(1);
+        QTRY_COMPARE(hex->property("text").toString(), QString("#00FF00"));
+        QCOMPARE(slider0->property("value").toInt(), 0);
+        QCOMPARE(slider2->property("value").toInt(), 0);
+        b->openGroup(0);
+        QTRY_COMPARE(hex->property("text").toString(), QString("#FF8000"));
+        QCOMPARE(slider0->property("value").toInt(), 255);
+        QCOMPARE(findItem(ui.window->contentItem(), "rgbValue1")->property("text").toString(), QString("128"));
     }
 
     void uiRgbSliderDragIsOneUndoStep()
@@ -2563,7 +2597,8 @@ private slots:
         ui.window->resize(1280, 1100);
         QTest::qWait(200);
         QQuickItem *pk = picker(ui.window);
-        pk->setProperty("color", QColor(10, 100, 30));
+        QVERIFY(pk);
+        ui.run.backend->setColor(QColor(10, 100, 30));
         QQuickItem *value = findItem(ui.window->contentItem(), "rgbValue1");
         QVERIFY(value && value->isVisible());
         QTRY_COMPARE(value->property("text").toString(), QString("100"));
