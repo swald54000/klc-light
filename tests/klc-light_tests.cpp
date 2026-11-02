@@ -874,6 +874,15 @@ private slots:
         QCOMPARE(newer.readAll(), QByteArray("{oops"));
     }
 
+    void libraryCopyAside()
+    {
+        QTemporaryDir dir;
+        Library::copyAside(dir.path() + "/state.json.bad", "{oops");
+        QFile file(dir.path() + "/state.json.bad");
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QCOMPARE(file.readAll(), QByteArray("{oops"));
+    }
+
     void libraryNamesCaseAndTrim()
     {
         QTemporaryDir dir;

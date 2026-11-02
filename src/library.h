@@ -41,6 +41,8 @@ public:
     // <dir>/profiles does not exist yet; returns whether it ran.
     bool migrate(const ThemePaths &paths);
 
+    // Fallback when state.json cannot be renamed: keep its bytes in a copy at path.
+    static void copyAside(const QString &path, const QByteArray &bytes);
     static QString fileNameFor(const QString &name, const QStringList &takenFileNames);
 
 private:

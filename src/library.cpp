@@ -26,9 +26,9 @@ Library::Library(QString dir) : m_dir(std::move(dir)) {
     QFile file(m_dir + "/state.json");
     if (!file.open(QIODevice::ReadOnly))
         return;
-    const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+    const QByteArray bytes = file.readAll();
+    const QJsonDocument document = QJsonDocument::fromJson(bytes);
     if (!document.isObject()) {
-        const QByteArray corrupt = file.readAll();
         file.close();
         QString bad = m_dir + "/state.json.bad";
         for (int n = 2; QFileInfo::exists(bad); ++n)
@@ -36,9 +36,7 @@ Library::Library(QString dir) : m_dir(std::move(dir)) {
         if (!file.rename(bad)) {
             // Keep the corrupt bytes before the next write replaces state.json.
             qWarning("klc-light: cannot move %s aside: %s", qPrintable(m_dir + "/state.json"), qPrintable(file.errorString()));
-            QFile copy(bad);
-            if (!copy.open(QIODevice::WriteOnly) || copy.write(corrupt) < 0)
-                qWarning("klc-light: cannot keep a copy of the corrupt state in %s", qPrintable(bad));
+            copyAside(bad, bytes);
         }
         return;
     }
@@ -47,6 +45,12 @@ Library::Library(QString dir) : m_dir(std::move(dir)) {
     for (auto it = themes.begin(); it != themes.end(); ++it)
         if (it.value().isString() && !it.value().toString().isEmpty())
             m_themes.insert(it.key(), it.value().toString());
+}
+
+void Library::copyAside(const QString &path, const QByteArray &bytes) {
+    QFile copy(path);
+    if (!copy.open(QIODevice::WriteOnly) || copy.write(bytes) < 0)
+        qWarning("klc-light: cannot keep a copy of the corrupt state in %s", qPrintable(path));
 }
 
 void Library::writeState() {
