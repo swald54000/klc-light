@@ -1771,6 +1771,15 @@ private slots:
         QVERIFY(run.backend->profiles().contains("broken"));
     }
 
+    void backendNameErrorExcept()
+    {
+        EditorRun run;
+        seed(run, {"tron", "B"}, "tron");
+        QVERIFY(!run.backend->nameError("Tron").isEmpty());
+        QCOMPARE(run.backend->nameError("Tron", "tron"), QString());
+        QVERIFY(!run.backend->nameError("b", "tron").isEmpty());
+    }
+
     // The last profile deleted, the replacement is named in the user's language.
     void backendDefaultNameTranslated()
     {
@@ -2164,6 +2173,29 @@ private slots:
         QMetaObject::invokeMethod(ok, "clicked");
         QTRY_COMPARE(ui.run.backend->profileName(), QString("Z2"));
         QCOMPARE(ui.run.backend->profiles(), QStringList({"Z", "Z2"}));
+    }
+
+    // Rename opens on the current name: no "already exists", and a change of case goes through.
+    void uiRenameKeepsOwnName()
+    {
+        Ui ui([](EditorRun &run) { seed(run, {"tron", "B"}, "tron"); });
+        QTest::mouseClick(ui.window, Qt::LeftButton, {}, itemCentre(findItem(ui.window->contentItem(), "renameProfileButton")));
+        QQuickItem *field = nullptr;
+        QTRY_VERIFY((field = findItem(ui.window->contentItem(), "profileNameField")) && field->isVisible());
+        QQuickItem *ok = findItem(ui.window->contentItem(), "profileNameOk");
+        QQuickItem *error = findItem(ui.window->contentItem(), "profileNameError");
+        QVERIFY(ok && error);
+        QCOMPARE(field->property("text").toString(), QString("tron"));
+        QVERIFY2(!error->isVisible(), qPrintable(error->property("text").toString()));
+        QVERIFY(ok->isEnabled());
+        field->setProperty("text", "b");
+        QTRY_VERIFY(error->isVisible()); // another profile's name is still refused
+        field->setProperty("text", "Tron");
+        QTRY_VERIFY(!error->isVisible());
+        QVERIFY(ok->isEnabled());
+        QMetaObject::invokeMethod(ok, "clicked");
+        QTRY_COMPARE(ui.run.backend->profileName(), QString("Tron"));
+        QCOMPARE(ui.run.backend->profiles(), QStringList({"B", "Tron"}));
     }
 
     void uiDeleteProfileConfirms()

@@ -594,7 +594,7 @@ bool Backend::save() {
     return true;
 }
 
-QString Backend::nameError(const QString &name) const { return fresh().nameError(name); }
+QString Backend::nameError(const QString &name, const QString &except) const { return fresh().nameError(name, except); }
 
 QStringList Backend::unreadableProfiles() const {
     QStringList names;

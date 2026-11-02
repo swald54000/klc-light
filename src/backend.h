@@ -135,7 +135,8 @@ public:
     // linked to before, if another one. Not an edit: no undo step, not dirty.
     Q_INVOKABLE QString linkTheme(const QString &theme);
     Q_INVOKABLE bool save(); // to the library, without sending
-    Q_INVOKABLE QString nameError(const QString &name) const;
+    // except: the name being renamed, free to take again (in another case, say).
+    Q_INVOKABLE QString nameError(const QString &name, const QString &except = QString()) const;
     // Everything edited between these two calls is one undo step (press, drag, release).
     Q_INVOKABLE void beginGesture();
     Q_INVOKABLE void endGesture();

@@ -158,7 +158,8 @@ RowLayout {
         anchors.centerIn: Overlay.overlay
         title: bar.nameMode === "new" ? qsTr("New profile")
              : bar.nameMode === "duplicate" ? qsTr("Duplicate profile") : qsTr("Rename profile")
-        readonly property string problem: backend.nameError(profileNameField.text)
+        // Renaming may keep the current name, or change only its case.
+        readonly property string problem: backend.nameError(profileNameField.text, bar.nameMode === "rename" ? backend.profileName : "")
         readonly property bool valid: profileNameField.text.trim() !== "" && problem === ""
         function confirm() {
             if (!valid)
