@@ -307,6 +307,16 @@ GridLayout {
     }
 
     // Saved colors: click to use, right-click (or click an empty slot) to store the current one.
+    RowLayout {
+        Layout.fillWidth: true
+        Layout.columnSpan: picker.columns
+        Label {
+            objectName: "savedColorsTitle"
+            text: qsTr("SAVED COLORS")
+            font.pixelSize: 11
+            opacity: 0.6
+        }
+    }
     Flow {
         Layout.fillWidth: true
         Layout.columnSpan: picker.columns
@@ -319,13 +329,24 @@ GridLayout {
                 width: 24; height: 24
                 radius: Math.min(4, theme.radius)
                 color: modelData === "" ? "transparent" : modelData
-                border.color: Qt.rgba(1, 1, 1, modelData === "" ? 0.3 : 0.15)
-                border.width: 1
-                Text {
-                    anchors.centerIn: parent
+                border.color: Qt.rgba(1, 1, 1, 0.15)
+                border.width: modelData === "" ? 0 : 1
+                // An empty slot is a faint dashed outline.
+                Shape {
+                    anchors.fill: parent
                     visible: parent.modelData === ""
-                    text: "+"
-                    color: Qt.rgba(1, 1, 1, 0.5)
+                    ShapePath {
+                        strokeColor: Qt.rgba(1, 1, 1, 0.3)
+                        strokeWidth: 1
+                        strokeStyle: ShapePath.DashLine
+                        dashPattern: [2, 2]
+                        fillColor: "transparent"
+                        startX: 0.5; startY: 0.5
+                        PathLine { x: 23.5; y: 0.5 }
+                        PathLine { x: 23.5; y: 23.5 }
+                        PathLine { x: 0.5; y: 23.5 }
+                        PathLine { x: 0.5; y: 0.5 }
+                    }
                 }
                 MouseArea {
                     anchors.fill: parent
@@ -337,10 +358,22 @@ GridLayout {
                             picker.pick(parent.modelData)
                     }
                 }
-                ToolTip.text: qsTr("Click to use, right-click to store the current color")
+                ToolTip.text: modelData === "" ? qsTr("Click to store the current color")
+                                               : qsTr("Click to use, right-click to store the current color")
                 ToolTip.visible: hover.hovered
                 HoverHandler { id: hover }
             }
         }
+    }
+    // Only while every slot is empty: once one is used, the tooltips are enough.
+    Label {
+        objectName: "savedColorsHint"
+        Layout.fillWidth: true
+        Layout.columnSpan: picker.columns
+        visible: backend.savedColors.every(c => c === "")
+        text: qsTr("Click to store the current color · right-click to replace")
+        wrapMode: Text.WordWrap
+        font.pixelSize: 10
+        opacity: 0.5
     }
 }

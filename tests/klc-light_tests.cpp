@@ -3124,6 +3124,30 @@ private slots:
         QVERIFY(findItem(ui.window->contentItem(), "hexField"));
     }
 
+    // The saved-color slots say what they are: a title, a hint while they are all empty,
+    // and no cryptic "+" in empty slots.
+    void uiSavedColorsExplained()
+    {
+        Ui ui;
+        QQuickItem *pk = picker(ui.window);
+        QVERIFY(pk);
+        QQuickItem *title = findItem(pk, "savedColorsTitle");
+        QVERIFY(title && title->isVisible());
+        QQuickItem *hint = findItem(pk, "savedColorsHint");
+        QVERIFY(hint);
+        QTRY_VERIFY(hint->isVisible());
+        std::function<void(QQuickItem *)> noPlus = [&](QQuickItem *item) {
+            if (item->isVisible() && item->property("text").toString() == "+")
+                QFAIL(qPrintable(QString("a visible \"+\" in %1").arg(item->objectName())));
+            for (QQuickItem *child : item->childItems())
+                noPlus(child);
+        };
+        noPlus(pk);
+        ui.run.backend->setSavedColor(0, QColor("#00E5FF"));
+        QTRY_VERIFY(!hint->isVisible());
+        QVERIFY(title->isVisible());
+    }
+
     // Undo must be visible, not only Ctrl+Z.
     void uiUndoRedoButtons()
     {
