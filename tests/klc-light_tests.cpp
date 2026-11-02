@@ -740,6 +740,24 @@ private slots:
         QCOMPARE(lib.profileForTheme("tron"), QString());
     }
 
+    // The links follow the stored name, whatever case the caller used.
+    void libraryRemoveOtherCase()
+    {
+        QTemporaryDir dir;
+        Library lib(dir.path());
+        QString error;
+        QVERIFY(lib.save(libDoc("Tron"), &error));
+        lib.link("Tron", "tron");
+        lib.setApplied("Tron");
+        QVERIFY2(lib.remove("tron", &error), qPrintable(error));
+        QVERIFY(lib.entries().isEmpty());
+        QCOMPARE(lib.applied(), QString());
+        QCOMPARE(lib.profileForTheme("tron"), QString());
+        Library again(dir.path());
+        QCOMPARE(again.applied(), QString());
+        QCOMPARE(again.profileForTheme("tron"), QString());
+    }
+
     void libraryNameError()
     {
         QTemporaryDir dir;

@@ -204,13 +204,15 @@ bool Library::remove(const QString &name, QString *error) {
         *error = QString("cannot remove %1").arg(entry->path);
         return false;
     }
+    // The state holds the stored name, whatever case the caller used.
+    const QString stored = entry->name;
     bool changed = false;
-    if (m_applied == name) {
+    if (m_applied == stored) {
         m_applied.clear();
         changed = true;
     }
     for (auto it = m_themes.begin(); it != m_themes.end();) {
-        if (it.value() == name) {
+        if (it.value() == stored) {
             it = m_themes.erase(it);
             changed = true;
         } else {
