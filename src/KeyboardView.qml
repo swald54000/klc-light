@@ -97,7 +97,7 @@ Item {
                 border.color: key.selected ? "white" : Qt.rgba(0, 0, 0, 0.6)
             }
 
-            // The open group's keys: accent-tinted veil with a thin accent outline.
+            // The open group's keys: a faint white veil with a thin accent outline.
             Rectangle {
                 anchors.fill: parent
                 radius: cap.radius
