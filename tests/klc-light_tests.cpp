@@ -16,6 +16,7 @@
 #include "effects.h"
 #include "keylabels.h"
 #include "layout.h"
+#include "library.h"
 #include "preview.h"
 #include "profile.h"
 #include "protocol.h"
@@ -684,6 +685,180 @@ private slots:
         QCOMPARE(resolved.source, paths.userThemes + "/tron/keyboard.klc.json");
         QCOMPARE(resolved.savePath, paths.userThemes + "/tron/keyboard.klc.json");
         QCOMPARE(resolved.themeName, QString("tron"));
+    }
+
+    static Document libDoc(const QString &name, const QString &color = "#112233")
+    {
+        Profile profile;
+        profile.base.color = QColor(color);
+        return fromLighting(profile, name);
+    }
+
+    void librarySaveLoad()
+    {
+        QTemporaryDir dir;
+        Library lib(dir.path());
+        QString error;
+        const Document doc = libDoc("Tron");
+        QVERIFY2(lib.save(doc, &error), qPrintable(error));
+        QCOMPARE(lib.names(), QStringList{"Tron"});
+        QVERIFY(QFile::exists(dir.path() + "/profiles/tron.klc.json"));
+        QStringList errors;
+        const auto loaded = lib.load("Tron", &errors);
+        QVERIFY(loaded);
+        QCOMPARE(QJsonDocument(toJson(*loaded)).toJson(), QJsonDocument(toJson(doc)).toJson());
+        QVERIFY(!lib.load("Nope", &errors));
+    }
+
+    void libraryFileNameCollision()
+    {
+        QCOMPARE(Library::fileNameFor("Tron!", {"tron-"}), QString("tron--2"));
+        QCOMPARE(Library::fileNameFor("", {}), QString("profile"));
+        QTemporaryDir dir;
+        Library lib(dir.path());
+        QString error;
+        QVERIFY(lib.save(libDoc("Tron!"), &error));
+        QVERIFY(lib.save(libDoc("Tron?"), &error));
+        QCOMPARE(lib.entries().size(), 2);
+        QCOMPARE(QDir(dir.path() + "/profiles").entryList(QDir::Files).size(), 2);
+    }
+
+    void libraryRename()
+    {
+        QTemporaryDir dir;
+        Library lib(dir.path());
+        QString error;
+        QVERIFY(lib.save(libDoc("A"), &error));
+        lib.link("A", "tron");
+        lib.setApplied("A");
+        QVERIFY2(lib.rename("A", "B", &error), qPrintable(error));
+        QVERIFY(QFile::exists(dir.path() + "/profiles/b.klc.json"));
+        QVERIFY(!QFile::exists(dir.path() + "/profiles/a.klc.json"));
+        QCOMPARE(lib.themeOf("B"), QString("tron"));
+        QCOMPARE(lib.applied(), QString("B"));
+        QStringList errors;
+        QVERIFY(!lib.load("A", &errors));
+        QCOMPARE(lib.load("B", &errors)->name, QString("B"));
+        Library again(dir.path());
+        QCOMPARE(again.applied(), QString("B"));
+        QCOMPARE(again.profileForTheme("tron"), QString("B"));
+    }
+
+    void libraryRemove()
+    {
+        QTemporaryDir dir;
+        Library lib(dir.path());
+        QString error;
+        QVERIFY(lib.save(libDoc("A"), &error));
+        lib.link("A", "tron");
+        lib.setApplied("A");
+        QVERIFY2(lib.remove("A", &error), qPrintable(error));
+        QVERIFY(lib.entries().isEmpty());
+        QCOMPARE(lib.applied(), QString());
+        QCOMPARE(lib.profileForTheme("tron"), QString());
+    }
+
+    void libraryNameError()
+    {
+        QTemporaryDir dir;
+        Library lib(dir.path());
+        QString error;
+        QVERIFY(lib.save(libDoc("A"), &error));
+        QVERIFY(!lib.nameError("").isEmpty());
+        QVERIFY(!lib.nameError("  ").isEmpty());
+        QVERIFY(!lib.nameError("A").isEmpty());
+        QCOMPARE(lib.nameError("A", "A"), QString());
+        QCOMPARE(lib.nameError("B"), QString());
+    }
+
+    void libraryLinkOneToOne()
+    {
+        QTemporaryDir dir;
+        Library lib(dir.path());
+        QCOMPARE(lib.link("A", "tron"), QString());
+        QCOMPARE(lib.link("B", "tron"), QString("A"));
+        QCOMPARE(lib.themeOf("A"), QString());
+        QCOMPARE(lib.link("B", "gruvbox"), QString());
+        QCOMPARE(lib.themeOf("B"), QString("gruvbox"));
+        QCOMPARE(lib.profileForTheme("tron"), QString());
+        lib.link("B", "");
+        QCOMPARE(lib.themeOf("B"), QString());
+    }
+
+    void libraryStateCorrupt()
+    {
+        QTemporaryDir dir;
+        write(dir.path() + "/state.json", "{oops");
+        Library lib(dir.path());
+        QCOMPARE(lib.applied(), QString());
+        QCOMPARE(lib.profileForTheme("tron"), QString());
+        QVERIFY(QFile::exists(dir.path() + "/state.json.bad"));
+        lib.setApplied("X");
+        QFile file(dir.path() + "/state.json");
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QCOMPARE(QJsonDocument::fromJson(file.readAll()).object().value("applied").toString(), QString("X"));
+    }
+
+    void libraryUnreadableEntry()
+    {
+        QTemporaryDir dir;
+        QDir().mkpath(dir.path() + "/profiles");
+        write(dir.path() + "/profiles/bad.klc.json", "{nope");
+        Library lib(dir.path());
+        QCOMPARE(lib.entries().size(), 1);
+        QVERIFY(!lib.entries().first().readable);
+        QStringList errors;
+        QVERIFY(!lib.load(lib.entries().first().name, &errors));
+        QVERIFY(!errors.isEmpty());
+        QString error;
+        QVERIFY(lib.save(libDoc("Good"), &error));
+        QFile file(dir.path() + "/profiles/bad.klc.json");
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QCOMPARE(file.readAll(), QByteArray("{nope"));
+        QCOMPARE(lib.entries().size(), 2);
+    }
+
+    void libraryMigrate()
+    {
+        QTemporaryDir dir;
+        ThemePaths paths = fakeTheme(dir, "tron");
+        const QByteArray klc = "{\"version\":1,\"base\":{\"type\":\"static\",\"color\":\"#112233\"}}";
+        QDir().mkpath(paths.userThemes + "/tron");
+        QDir().mkpath(paths.stockThemes + "/tokyo-night");
+        write(paths.userThemes + "/tron/keyboard.klc.json", klc);
+        write(paths.userThemes + "/tron/keyboard.klc.json.essai", "{garbage");
+        write(paths.stockThemes + "/tokyo-night/keyboard.rgb", "#445566\n");
+        QDir().mkpath(paths.stockThemes + "/plain");
+        Library lib(dir.path() + "/klc");
+        QVERIFY(lib.migrate(paths));
+        QCOMPARE(lib.names(), (QStringList{"Tokyo-night", "Tron"}));
+        QCOMPARE(lib.profileForTheme("tron"), QString("Tron"));
+        QCOMPARE(lib.profileForTheme("tokyo-night"), QString("Tokyo-night"));
+        QCOMPARE(lib.profileForTheme("plain"), QString());
+        QCOMPARE(lib.applied(), QString("Tron"));
+        QStringList errors;
+        QCOMPARE(lighting(*lib.load("Tokyo-night", &errors)).base.color, QColor("#445566"));
+        QFile file(paths.userThemes + "/tron/keyboard.klc.json");
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QCOMPARE(file.readAll(), klc);
+        QVERIFY(!lib.migrate(paths));
+        QCOMPARE(lib.names().size(), 2);
+    }
+
+    void libraryMigrateNothing()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "plain");
+        QDir().mkpath(paths.stockThemes + "/plain");
+        Library lib(dir.path() + "/klc");
+        QVERIFY(lib.migrate(paths));
+        QCOMPARE(lib.names(), QStringList{"Default"});
+        QCOMPARE(lib.applied(), QString("Default"));
+        QCOMPARE(lib.themeOf("Default"), QString());
+        QStringList errors;
+        const Profile profile = lighting(*lib.load("Default", &errors));
+        QCOMPARE(profile.base.type, QString("static"));
+        QCOMPARE(profile.base.color, QColor(Qt::black));
     }
 
     void themeProfileNothing()
@@ -1468,6 +1643,7 @@ private:
             paths.stateTheme = dir.path() + "/state/current/theme";
             paths.themeName = dir.path() + "/state/current/theme.name";
             paths.userThemes = dir.path() + "/config/themes";
+            paths.stockThemes = dir.path() + "/stock/themes";
             QDir().mkpath(paths.stateTheme);
             QFile name(paths.themeName);
             name.open(QIODevice::WriteOnly);
@@ -1524,6 +1700,7 @@ private:
         paths.stateTheme = dir.path() + "/state/current/theme";
         paths.themeName = dir.path() + "/state/current/theme.name";
         paths.userThemes = dir.path() + "/config/themes";
+        paths.stockThemes = dir.path() + "/stock/themes";
         QDir().mkpath(paths.stateTheme);
         write(paths.themeName, name.toUtf8() + "\n");
         return paths;
@@ -1577,7 +1754,7 @@ private:
     static void write(const QString &path, const QByteArray &contents)
     {
         QFile file(path);
-        QVERIFY(file.open(QIODevice::WriteOnly));
+        QVERIFY2(file.open(QIODevice::WriteOnly), qPrintable(path));
         file.write(contents);
     }
 

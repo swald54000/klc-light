@@ -23,7 +23,7 @@ QString readTrimmed(const QString &path) {
 ThemePaths ThemePaths::standard() {
     const QString home = QDir::homePath();
     return {home + "/.local/state/omarchy/current/theme", home + "/.local/state/omarchy/current/theme.name",
-            home + "/.config/omarchy/themes"};
+            home + "/.config/omarchy/themes", "/usr/share/omarchy/themes"};
 }
 
 std::optional<Profile> readProfile(const QString &path, QStringList *errors) {
@@ -99,4 +99,41 @@ bool saveProfile(const Profile &profile, const QString &path, QString *error) {
         return false;
     }
     return true;
+}
+
+QStringList installedThemes(const ThemePaths &paths) {
+    QStringList themes;
+    for (const QString &root : {paths.userThemes, paths.stockThemes})
+        themes += QDir(root).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    themes.removeDuplicates();
+    themes.sort();
+    return themes;
+}
+
+std::optional<Profile> themeLighting(const ThemePaths &paths, const QString &theme, QStringList *errors) {
+    const QStringList roots = {paths.userThemes + "/" + theme, paths.stockThemes + "/" + theme};
+    for (const QString &root : roots) {
+        const QString path = root + "/keyboard.klc.json";
+        if (QFileInfo::exists(path))
+            return readProfile(path, errors);
+    }
+    for (const QString &root : roots) {
+        const QString path = root + "/keyboard.effect", effect = readTrimmed(path);
+        if (effect.isEmpty())
+            continue;
+        if (auto profile = profileFromLegacy(effect, QString()))
+            return profile;
+        errors->append(QString("%1: unknown effect \"%2\"").arg(path, effect));
+        return std::nullopt;
+    }
+    for (const QString &root : roots) {
+        const QString path = root + "/keyboard.rgb", rgb = readTrimmed(path);
+        if (rgb.isEmpty())
+            continue;
+        if (auto profile = profileFromLegacy(QString(), rgb))
+            return profile;
+        errors->append(QString("%1: invalid color \"%2\"").arg(path, rgb));
+        return std::nullopt;
+    }
+    return std::nullopt;
 }
