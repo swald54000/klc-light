@@ -186,3 +186,7 @@ One send each, base wave white → blue, size 68, plus the power key:
 So the controller's y grows downward, unlike GG's table: positions are now
 y' = (256 − y_GG) · 6.44, the F row at 0 and the space bar at 1075, and `top` is y 0.
 The radial checks could not tell, since at size 68 the height adds little lag.
+
+Re-checked after the flip: toward the top runs up to the F row, toward the bottom runs
+down to the space bar, and a small radial wave out from the space bar (size 15) rings
+upward and outward from it. Every direction now matches the editor.
