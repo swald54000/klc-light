@@ -21,10 +21,19 @@ model, whether it works or not.
 
 ## Install
 
+The AUR package is on its way (AUR registrations are paused for now). Until then, build
+the same package from this repository:
+
 ```sh
-yay -S klc-light
+git clone https://github.com/swald54000/klc-light
+cd klc-light/aur
+makepkg -si
 sudo usermod -aG klc-light $USER
 ```
+
+or install the package attached to the
+[latest release](https://github.com/swald54000/klc-light/releases/latest)
+with `sudo pacman -U klc-light-*.pkg.tar.zst`, then the same `usermod` line.
 
 Then log out and back in. The package adds a `klc-light` group and a udev rule that lets
 its members attach and detach the lighting controller (through the controller's own sysfs
