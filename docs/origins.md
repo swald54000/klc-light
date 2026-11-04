@@ -230,13 +230,19 @@ measurements: slopes per 10 ms tick, 0x9A = 0 toward the origin, a `0x0C` per-ke
 overlay that lights the power key by its own id 0x66, the latch law for running slots),
 OpenRGB's SteelSeries ApS branch (layout query `0x10`, free-order `0x0E` packets).
 
-## The power key's own LED: the 0x0C overlay (2026-11-04)
+## The power key and the 0x0C overlay (2026-11-04)
 
-Correction to the "twin" reading above: the power key has its own working LED. The
-GE76 notes' per-key overlay, `0C 00 66 00` + `[66 R G B]` entries (unused bytes `FF`),
-committed with `0D 00 02` after the usual burst, lit the power key red with the rest of
-the board black, and nothing else (F1 and keypad 3 stayed off). A normal send afterwards
-(Tron) cleared the overlay: the power key showed F1's color again. So the F1 link is the
-firmware's reading of code 0x66 in `0x0E` tables, not wiring. klc-light sends the
-overlay after every burst with the power key's color (its own, else the first color of
-its animation or the base), and no 0x66 element.
+The GE76 notes' per-key overlay, `0C 00 66 00` + `[66 R G B]` (unused bytes `FF`), then
+`0D 00 02`, sent after the usual burst:
+
+| burst | F1 | overlay asks power | power shows |
+|---|---|---|---|
+| static, all black | off | red | red, nothing else lit |
+| Tron (normal send, no overlay) | cyan | — | cyan: the next burst clears the overlay |
+| Tron (wave base) + overlay, also with a 500 ms pause first, sent before the closing `09`s, or ending with `09` | cyan | red | cyan |
+| static, F1 cyan | cyan | red | cyan |
+
+So the power key's LED works, but on the GS76 it shows F1's color whatever is sent; its
+own setting (overlay, or code 0x66 in a table, which also lights keypad 3) only shows
+while F1 is off, or mixed in. klc-light keeps the power key as F1's twin and sends no
+overlay. The GE76 lights it on its own: the link is particular to the GS76.

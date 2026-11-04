@@ -43,6 +43,10 @@ QList<quint8> Layout::aquaHids(Region region) const {
     return regionHids(region).mid(0, kAquaPrefix[int(region)]);
 }
 
+QString Layout::lightSource(const QString &id) const {
+    return id == "KEY_POWER" ? QString("KEY_F1") : id;
+}
+
 QStringList Layout::group(const QString &name) const {
     if (name == "wasd")
         return {"KEY_W", "KEY_A", "KEY_S", "KEY_D"};

@@ -527,7 +527,7 @@ private slots:
         write(paths.userThemes + "/tron/keyboard.klc.json", theme);
         CliRun run(dir, paths);
         QCOMPARE(run.exec({"apply", "--theme"}), 0);
-        QCOMPARE(run.log.events.count("send"), 9); // 7 + the power key's overlay and commit
+        QCOMPARE(run.log.events.count("send"), 7);
     }
 
     void profileWaveErrors_data()
@@ -964,105 +964,86 @@ private slots:
         QCOMPARE(fragment.toHex(' '), QByteArray("10 20 30 a0 b0 c0 23 01 00 08 00 04"));
     }
 
-    // The power key's LED takes no element of the 0x0E tables (code 0x66 there lights F1's
-    // twin and keypad 3, docs/origins.md): it gets its color from a 0x0C per-key overlay,
-    // committed with 0x0D, after every burst.
-    static QByteArray overlayOf(const BuildResult &result)
-    {
-        for (const Packet &p : result.packets)
-            if (p.kind == Packet::Feature && quint8(p.data.at(0)) == 0x0c)
-                return p.data;
-        return {};
-    }
-
-    void protocolPowerOverlay()
-    {
-        Profile profile;
-        profile.base.color = QColor("#00E5FF");
-        profile.keys.insert("KEY_POWER", QColor("#FF0000"));
-        const BuildResult result = buildPackets(profile, Layout::gs76());
-        QVERIFY2(result.errors.isEmpty(), qPrintable(result.errors.join("; ")));
-        const int n = int(result.packets.size());
-        QVERIFY(n >= 3);
-        QCOMPARE(result.packets[n - 3].kind, Packet::Output); // the usual 0x09 refresh first
-        QCOMPARE(quint8(result.packets[n - 3].data.at(0)), quint8(0x09));
-        const QByteArray overlay = result.packets[n - 2].data;
-        QCOMPARE(overlay.size(), 524);
-        QCOMPARE(overlay.left(8).toHex(' '), QByteArray("0c 00 66 00 66 ff 00 00"));
-        QCOMPARE(overlay.mid(8), QByteArray(524 - 8, char(0xff)));
-        QCOMPARE(result.packets[n - 1].kind, Packet::Output);
-        QCOMPARE(result.packets[n - 1].data.left(3).toHex(' '), QByteArray("0d 00 02"));
-        QCOMPARE(result.packets[n - 1].data.size(), 64);
-        for (const Packet &p : result.packets)
-            if (quint8(p.data.at(0)) == 0x0e)
-                for (int i = 0; i < quint8(p.data.at(2)); ++i)
-                    QVERIFY(quint8(p.data.at(4 + i * 12 + 11)) != 0x66);
-    }
-
-    void protocolPowerOverlayColor_data()
+    // The power key's LED is wired to F1's output; code 0x66 also lights keypad 3, so it is
+    // never sent (measured on the GS76, docs/origins.md).
+    void protocolPowerNotSent_data()
     {
         QTest::addColumn<QString>("base");
-        QTest::addColumn<QString>("group");
-        QTest::addColumn<int>("brightness");
-        QTest::addColumn<QString>("expected");
-        QTest::newRow("static base") << "static" << "" << 100 << "00e5ff";
-        QTest::newRow("dimmed") << "static" << "" << 50
-                                << scaled(EffectDef{QColor("#00E5FF"), {}, 1, std::nullopt}, 50, 100).start.name().mid(1);
-        QTest::newRow("wave base") << "wave" << "" << 100 << "dfa100";
-        QTest::newRow("wave group") << "static" << "wave" << 100 << "ff0000";
+        QTest::newRow("static") << "static";
+        QTest::newRow("wave") << "wave";
     }
 
-    void protocolPowerOverlayColor()
+    void protocolPowerNotSent()
     {
         QFETCH(QString, base);
-        QFETCH(QString, group);
-        QFETCH(int, brightness);
-        QFETCH(QString, expected);
         Profile profile;
-        profile.brightness = brightness;
         profile.base.type = base;
         profile.base.color = QColor("#00E5FF");
-        profile.base.steps = {{QColor("#DFA100"), 40}, {QColor("#FF000D"), 40}};
-        if (group == "wave") {
-            EffectLayer layer;
-            layer.name = "p";
-            layer.type = "wave";
-            layer.keys = {"KEY_POWER", "KEY_F12"};
-            layer.start = QColor("#FF0000");
-            layer.steps = {{QColor("#FF0000"), 40}, {QColor("#0000FF"), 40}};
-            profile.effects = {layer};
-        }
+        profile.base.steps = {{QColor("#00E5FF"), 40}, {QColor("#0A27D3"), 40}};
         const BuildResult result = buildPackets(profile, Layout::gs76());
         QVERIFY2(result.errors.isEmpty(), qPrintable(result.errors.join("; ")));
-        QCOMPARE(overlayOf(result).mid(5, 3).toHex(), expected.toLatin1());
+        QList<quint8> counts;
+        for (const Packet &p : result.packets)
+            if (quint8(p.data.at(0)) == 0x0e) {
+                counts.append(quint8(p.data.at(2)));
+                for (int i = 0; i < 42; ++i)
+                    QVERIFY(quint8(p.data.at(4 + i * 12 + 11)) != 0x66);
+            }
+        QCOMPARE(counts.size(), 4);
+        QVERIFY(counts.contains(0x0b));
     }
 
-    void previewPowerSteady()
+    void protocolPowerKeyRejected()
     {
         Profile profile;
-        profile.base.type = "wave";
-        profile.base.steps = {{QColor("#DFA100"), 40}, {QColor("#FF000D"), 40}};
-        const Preview preview(profile, Layout::gs76());
-        for (qint64 t : {0, 333, 777})
-            QCOMPARE(preview.colorAt("KEY_POWER", t), QColor("#DFA100"));
-        QVERIFY(preview.colorAt("KEY_F1", 0) != preview.colorAt("KEY_F1", 400));
+        profile.keys.insert("KEY_POWER", QColor("#FF0000"));
+        QVERIFY(validate(profile, Layout::gs76()).join("\n").contains("KEY_POWER is lit with KEY_F1"));
     }
 
-    void documentPowerKeptInGroups()
+    void layoutPowerLitByF1()
+    {
+        QCOMPARE(Layout::gs76().lightSource("KEY_POWER"), QString("KEY_F1"));
+        QCOMPARE(Layout::gs76().lightSource("KEY_A"), QString("KEY_A"));
+    }
+
+    void previewPowerShowsF1()
+    {
+        Profile profile;
+        profile.keys.insert("KEY_F1", QColor("#FF0000"));
+        const Preview preview(profile, Layout::gs76());
+        QCOMPARE(preview.colorAt("KEY_POWER", 0), QColor("#FF0000"));
+    }
+
+    void documentPowerDroppedFromGroups()
     {
         const QByteArray json = R"({
           "version": 3, "name": "P", "brightness": 100, "speed": 100,
           "base": { "type": "static", "color": "#000000" },
-          "groups": [ { "name": "Power", "behavior": "static", "keys": ["KEY_POWER"], "color": "#FF0000" } ],
+          "groups": [ { "name": "Power", "behavior": "static", "keys": ["KEY_POWER"], "color": "#FF0000" },
+                      { "name": "Both", "behavior": "static", "keys": ["KEY_F2", "KEY_POWER"], "color": "#00FF00" } ],
           "reactive": { "enabled": false, "color": "#FFFFFF", "duration": 30 }
         })";
         QStringList errors;
         const auto doc = documentFromJson(QJsonDocument::fromJson(json).object(), &errors);
         QVERIFY2(doc, qPrintable(errors.join("; ")));
         QCOMPARE(doc->groups.size(), 1);
-        QCOMPARE(doc->groups.at(0).keys, QStringList({"KEY_POWER"}));
+        QCOMPARE(doc->groups.at(0).keys, QStringList({"KEY_F2"}));
         QVERIFY(validate(*doc, Layout::gs76()).isEmpty());
-        QCOMPARE(overlayOf(buildPackets(lighting(*doc), Layout::gs76())).mid(4, 4).toHex(' '), QByteArray("66 ff 00 00"));
+    }
+
+    void profilePowerDroppedFromKeys()
+    {
+        const QByteArray json = R"({
+          "version": 1, "brightness": 100, "speed": 100,
+          "base": { "type": "static", "color": "#000000" },
+          "keys": { "KEY_POWER": "#FF0000", "KEY_F2": "#00FF00" },
+          "reactive": { "enabled": false, "color": "#FFFFFF", "duration": 30 }
+        })";
+        QStringList errors;
+        const auto profile = profileFromJson(QJsonDocument::fromJson(json).object(), &errors);
+        QVERIFY2(profile, qPrintable(errors.join("; ")));
+        QVERIFY(!profile->keys.contains("KEY_POWER"));
+        QVERIFY(profile->keys.contains("KEY_F2"));
     }
 
     void protocolSizes()
@@ -1398,7 +1379,7 @@ private slots:
         const ApplyResult result = device.apply(buildPackets(builtinProfile("tron"), Layout::gs76()).packets);
         QCOMPARE(int(result.error), int(ApplyError::None));
         QStringList expected{"bind", "open"};
-        for (int i = 0; i < 14; ++i) // 12 + the power key's overlay and commit
+        for (int i = 0; i < 12; ++i)
             expected << "send";
         expected << "close" << "unbind";
         QCOMPARE(log.events, expected);
@@ -1496,7 +1477,7 @@ private slots:
         write(paths.userThemes + "/tron/keyboard.effect", "tron\n");
         CliRun run(dir, paths);
         QCOMPARE(run.exec({"apply", "--check"}), 0);
-        QVERIFY2(run.out.contains("14 packets OK"), qPrintable(run.out));
+        QVERIFY2(run.out.contains("12 packets OK"), qPrintable(run.out));
         QVERIFY(run.log.events.isEmpty());
     }
 
@@ -1565,7 +1546,7 @@ private slots:
         addProfile(dir, "Tokyo", "#7aa2f7", "tokyo-night");
         CliRun run(dir, paths);
         QCOMPARE(run.exec({"apply", "--theme"}), 0);
-        QCOMPARE(run.log.events.count("send"), 7);
+        QCOMPARE(run.log.events.count("send"), 5);
     }
 
     void cliJson()
@@ -1578,7 +1559,7 @@ private slots:
         QCOMPARE(run.exec({"apply", "--check", "--json"}), 0);
         const QJsonObject result = QJsonDocument::fromJson(run.out.toUtf8()).object();
         QCOMPARE(result.value("ok").toBool(), true);
-        QCOMPARE(result.value("packets").toInt(), 14);
+        QCOMPARE(result.value("packets").toInt(), 12);
         QCOMPARE(result.value("source").toString(), QString("Tron"));
     }
 
@@ -1801,11 +1782,13 @@ private slots:
         QCOMPARE(run.backend->document().reactive.duration, 2000);
     }
 
-    void backendSelectPower()
+    void backendSelectPowerSelectsF1()
     {
         EditorRun run;
         run.backend->select({"KEY_POWER"}, false);
-        QCOMPARE(run.backend->selection(), QStringList({"KEY_POWER"}));
+        QCOMPARE(run.backend->selection(), QStringList({"KEY_F1"}));
+        run.backend->select({"KEY_POWER", "KEY_F1", "KEY_F2"}, false);
+        QCOMPARE(run.backend->selection(), QStringList({"KEY_F1", "KEY_F2"}));
         bool noted = false;
         for (const QVariant &key : run.backend->keys())
             if (key.toMap()["id"] == "KEY_POWER")
@@ -2491,7 +2474,7 @@ private slots:
         FakeBinder binder(log);
         Device device = fakeDevice(transport, binder, dir, log);
         QCOMPARE(int(device.apply(buildPackets(builtinProfile("tron"), Layout::gs76()).packets).error), int(ApplyError::None));
-        QCOMPARE(log.sleeps, QList<int>(14, Device::PacketGapMs));
+        QCOMPARE(log.sleeps, QList<int>(12, Device::PacketGapMs));
         QCOMPARE(Device::PacketGapMs, 10);
     }
 
@@ -3923,16 +3906,10 @@ private:
     {
         QVERIFY2(result.errors.isEmpty(), qPrintable(result.errors.join("; ")));
         const auto expected = fixture(name);
-        // The recordings predate the power key's overlay and commit, which end every burst.
-        QList<Packet> packets = result.packets;
-        QVERIFY(packets.size() >= 2 && quint8(packets.last().data.at(0)) == 0x0d);
-        packets.removeLast();
-        QCOMPARE(quint8(packets.last().data.at(0)), quint8(0x0c));
-        packets.removeLast();
-        QCOMPARE(packets.size(), expected.size());
+        QCOMPARE(result.packets.size(), expected.size());
         for (int i = 0; i < expected.size(); ++i) {
-            QCOMPARE(QChar(packets[i].kind == Packet::Feature ? 'F' : 'O'), expected[i].first);
-            const QByteArray got = packets[i].data;
+            QCOMPARE(QChar(result.packets[i].kind == Packet::Feature ? 'F' : 'O'), expected[i].first);
+            const QByteArray got = result.packets[i].data;
             QByteArray want = expected[i].second;
             // An effect packet's transition table (0x02..0x81), wave fields (0x8C..0x95, 0x9A)
             // and total duration (0x98..0x99).

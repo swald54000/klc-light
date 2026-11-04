@@ -35,10 +35,6 @@ struct WaveFields {
 };
 
 WaveFields waveFields(const Wave &wave, const Layout &layout);
-// The power key's one steady color, sent as a 0x0C overlay: its own static color, else
-// the first color of the animation or base it belongs to, at the profile's brightness.
-QColor powerColor(const Profile &profile);
-
 // Size 1..100 to GG's propagation speed 31..1001, on a log scale (68 → 326).
 int waveSpeed(int size);
 

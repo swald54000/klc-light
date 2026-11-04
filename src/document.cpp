@@ -166,8 +166,16 @@ std::optional<Document> documentFromJson(const QJsonObject &object, QStringList 
         Group group;
         group.name = g.value("name").toString();
         group.behavior = g.value("behavior").toString();
-        for (const QJsonValue &key : g.value("keys").toArray())
-            group.keys.append(key.toString());
+        // The power key is lit by F1 and belongs to no group; one left with no key goes.
+        bool dropped = false;
+        for (const QJsonValue &key : g.value("keys").toArray()) {
+            if (Layout::gs76().lightSource(key.toString()) != key.toString())
+                dropped = true;
+            else
+                group.keys.append(key.toString());
+        }
+        if (dropped && group.keys.isEmpty())
+            continue;
         if (!group.animated()) {
             if (g.contains("color"))
                 if (const auto color = parseColor(g.value("color"), where, &problems))
