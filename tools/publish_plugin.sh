@@ -1,0 +1,27 @@
+#!/bin/sh
+# Copies the bar widget into a checkout of the plugin repository (swald54000/omarchy-klc-light),
+# whose root must be the plugin itself for `omarchy plugin add`. Usage: publish_plugin.sh <checkout>
+set -eu
+ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+DEST="${1:?usage: publish_plugin.sh <plugin repository checkout>}"
+SRC="$ROOT/omarchy-plugin/swald.klc-light"
+find "$DEST" -mindepth 1 -maxdepth 1 ! -name .git ! -name README.md ! -name LICENSE -exec rm -rf {} +
+cp -R "$SRC"/. "$DEST"/
+cp "$ROOT/LICENSE" "$DEST/LICENSE"
+[ -f "$DEST/README.md" ] || cat > "$DEST/README.md" <<'README'
+# KLC Light bar widget for Omarchy
+
+A bar widget for [KLC Light](https://github.com/swald54000/klc-light), the per-key keyboard
+lighting editor for MSI laptops (SteelSeries KLC controller). A keyboard icon, dimmed while
+the lighting is off, whose tooltip names the applied profile. Click it for the profile list
+(a click applies one), right-click to turn the keyboard off, middle-click to turn it back on;
+the panel also opens the editor.
+
+Needs KLC Light installed (`yay -S klc-light`, then join the `klc-light` group).
+
+```sh
+omarchy plugin add https://github.com/swald54000/omarchy-klc-light.git --enable
+```
+README
+omarchy plugin validate "$DEST"
+echo "plugin copied to $DEST"
