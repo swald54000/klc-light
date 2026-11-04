@@ -182,9 +182,13 @@ std::optional<Profile> profileFromJson(const QJsonObject &object, QStringList *e
     }
 
     const QJsonObject keys = object.value("keys").toObject();
+    // A key lit by another one's output (the power key, by F1) has no color of its own:
+    // older profiles may still name it, and it is dropped.
+    const Layout &layout = Layout::gs76();
     for (auto it = keys.begin(); it != keys.end(); ++it)
-        if (const auto color = parseColor(it.value(), it.key(), &problems))
-            profile.keys.insert(it.key(), *color);
+        if (layout.lightSource(it.key()) == it.key())
+            if (const auto color = parseColor(it.value(), it.key(), &problems))
+                profile.keys.insert(it.key(), *color);
 
     const QJsonArray effects = object.value("effects").toArray();
     for (int i = 0; i < effects.size(); ++i) {
@@ -194,7 +198,8 @@ std::optional<Profile> profileFromJson(const QJsonObject &object, QStringList *e
         effect.name = e.value("name").toString();
         effect.type = e.value("type").toString();
         for (const QJsonValue &key : e.value("keys").toArray())
-            effect.keys.append(key.toString());
+            if (layout.lightSource(key.toString()) == key.toString())
+                effect.keys.append(key.toString());
         effect.steps = stepsFromJson(e.value("steps"), where, &problems);
         if (effect.type == "wave")
             effect.wave = waveFromJson(e);
@@ -250,6 +255,8 @@ QStringList validate(const Profile &profile, const Layout &layout) {
     for (auto it = profile.keys.begin(); it != profile.keys.end(); ++it)
         if (!layout.byId(it.key()))
             errors.append(QString("keys: unknown key %1").arg(it.key()));
+        else if (layout.lightSource(it.key()) != it.key())
+            errors.append(QString("keys: %1 is lit with %2").arg(it.key(), layout.lightSource(it.key())));
 
     QSet<QString> claimed;
     for (int i = 0; i < profile.effects.size(); ++i) {
@@ -263,6 +270,8 @@ QStringList validate(const Profile &profile, const Layout &layout) {
         for (const QString &key : effect.keys) {
             if (!layout.byId(key))
                 errors.append(QString("%1: unknown key %2").arg(where, key));
+            else if (layout.lightSource(key) != key)
+                errors.append(QString("%1: %2 is lit with %3").arg(where, key, layout.lightSource(key)));
             else if (claimed.contains(key))
                 errors.append(QString("%1: %2 already belongs to another effect").arg(where, key));
             claimed.insert(key);

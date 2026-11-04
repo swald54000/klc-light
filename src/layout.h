@@ -35,6 +35,9 @@ public:
     QList<quint8> aquaHids(Region region) const;
     // Key ids of a selection group: wasd, function, digits, numpad, modifiers, all.
     QStringList group(const QString &name) const;
+    // The key whose output lights this one's LED: KEY_F1 for the power key, wired to the
+    // same output (measured on the GS76); the key itself otherwise.
+    QString lightSource(const QString &id) const;
 
 private:
     Layout();

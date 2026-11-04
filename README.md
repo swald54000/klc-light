@@ -3,7 +3,7 @@
 Per-key lighting editor for the SteelSeries KLC keyboard of the MSI GS76
 (`1038:113a`), built for Omarchy: a library of named lighting profiles that
 themes can link to, key groups with their own effects, waves in eight
-directions (toward or away from any key), the power key, an on-screen preview,
+directions (toward or away from any key), an on-screen preview,
 and `klc-light apply` for the theme hooks. Nothing reaches the
 keyboard until you press Apply, and each Apply sends once: this controller
 hangs on repeated sends.
@@ -48,8 +48,11 @@ In a profile file a wave reads:
 `aqua-3` to the left, the others to the centre. They are written in the new
 form (profile version 3) the next time they are saved.
 
-The power key, top right, is lit like any other key. The small orange light
-beside it is a separate indicator the keyboard controller does not drive.
+The power key, top right, has no light of its own: its LED is wired to F1's
+output and always shows F1's color, so the editor draws it in F1's color and a
+click on it picks F1. Power keys found in older profiles or groups are dropped
+when read. The small orange light beside it is a separate indicator the
+keyboard controller does not drive.
 
 ## Profile library
 

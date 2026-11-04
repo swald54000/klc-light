@@ -21,10 +21,6 @@ constexpr int kFragmentsPerRegion = 42;
 
 enum : quint8 { kMaskEffect = 0, kMaskSteady = 1, kMaskReactive = 8 };
 
-// The power key is in none of msi-perkeyrgb's packets nor the captured preset; it is sent
-// as a twelfth element of the 11-key packet, which the controller accepts.
-constexpr quint8 kPowerHid = 0x66;
-
 // The captured "aqua" preset of msi-perkeyrgb, the only effect packets validated on this
 // firmware; new effects reuse its packets and change only the color cycle.
 const QList<QByteArray> &aquaPackets() {
@@ -116,8 +112,9 @@ QByteArray effectPacket(const QByteArray &templatePacket, int slot, const Effect
     return packet;
 }
 
-// Byte 2 counts the key elements that follow (GG's `length`): 42, 11, 24 and 36 in the
-// captured packets, 12 once the power key rides with the 11.
+// Byte 2 counts the key elements that follow (GG's `length`): 42, 11, 24 and 36. The power
+// key has no element of its own: its LED is wired to F1's output, and code 0x66, accepted
+// as a twelfth element, lights keypad 3 as well (docs/origins.md).
 QByteArray regionPacket(const QList<QByteArray> &fragments, bool staticTrailer) {
     QByteArray packet(4, '\0');
     packet[0] = 0x0e;
@@ -224,8 +221,6 @@ BuildResult buildPackets(const Profile &profile, const Layout &layout, bool allo
                     seen.insert(hid);
                     fragments.append(fragment(keyColor(hid), reactive, 0, steadyMask, hid));
                 }
-            if (region == Region::Enter)
-                fragments.append(fragment(keyColor(kPowerHid), reactive, 0, steadyMask, kPowerHid));
             result.packets.append({Packet::Feature, regionPacket(fragments, true)});
         }
         result.packets.append(outputRefresh());
@@ -234,10 +229,7 @@ BuildResult buildPackets(const Profile &profile, const Layout &layout, bool allo
 
     auto region = [&](Region r) {
         QList<QByteArray> fragments;
-        QList<quint8> hids = layout.aquaHids(r);
-        if (r == Region::Enter)
-            hids.append(kPowerHid);
-        for (quint8 hid : hids) {
+        for (quint8 hid : layout.aquaHids(r)) {
             if (slotOfHid.contains(hid))
                 fragments.append(fragment(Qt::black, nullptr, quint8(slotOfHid.value(hid)), kMaskEffect, hid));
             else

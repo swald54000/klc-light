@@ -97,6 +97,12 @@ Item {
                 border.color: key.selected ? "white" : Qt.rgba(0, 0, 0, 0.6)
             }
 
+            // The power key is lit by F1's output: say so on hover.
+            HoverHandler { id: hover; enabled: !!key.modelData.note }
+            ToolTip.visible: hover.hovered
+            ToolTip.text: key.modelData.note || ""
+            ToolTip.delay: 400
+
             // The open wave's origin key: a white ring.
             Rectangle {
                 objectName: "originRing"

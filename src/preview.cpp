@@ -57,7 +57,9 @@ QColor Preview::cycleColor(const EffectDef &def, qint64 ms) const {
     return def.start;
 }
 
-QColor Preview::colorAt(const QString &keyId, qint64 ms) const {
+QColor Preview::colorAt(const QString &shownId, qint64 ms) const {
+    // A key wired to another one's output shows that key's light.
+    const QString keyId = m_layout.lightSource(shownId);
     int slot = m_slotOfKey.value(keyId, -1);
     if (slot < 0 && m_static.contains(keyId))
         return m_static.value(keyId);

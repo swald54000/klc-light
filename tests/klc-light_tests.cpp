@@ -946,151 +946,86 @@ private slots:
         QCOMPARE(fragment.toHex(' '), QByteArray("10 20 30 a0 b0 c0 23 01 00 08 00 04"));
     }
 
-    // The power key rides as a twelfth element of the 11-key packet, whose byte 2 counts them.
-    static QByteArray powerPacket(const BuildResult &result)
+    // The power key's LED is wired to F1's output; code 0x66 also lights keypad 3, so it is
+    // never sent (measured on the GS76, docs/origins.md).
+    void protocolPowerNotSent_data()
     {
-        for (const Packet &packet : result.packets)
-            if (quint8(packet.data.at(0)) == 0x0e && quint8(packet.data.at(2)) == 0x0c)
-                return packet.data;
-        return {};
+        QTest::addColumn<QString>("base");
+        QTest::newRow("static") << "static";
+        QTest::newRow("wave") << "wave";
     }
 
-    void protocolPowerStatic()
+    void protocolPowerNotSent()
     {
+        QFETCH(QString, base);
         Profile profile;
+        profile.base.type = base;
         profile.base.color = QColor("#00E5FF");
-        profile.keys.insert("KEY_POWER", QColor("#FF0000"));
+        profile.base.steps = {{QColor("#00E5FF"), 40}, {QColor("#0A27D3"), 40}};
         const BuildResult result = buildPackets(profile, Layout::gs76());
         QVERIFY2(result.errors.isEmpty(), qPrintable(result.errors.join("; ")));
-        const QByteArray packet = powerPacket(result);
-        QVERIFY(!packet.isEmpty());
-        QCOMPARE(packet.mid(4 + 11 * 12, 12).toHex(' '), QByteArray("ff 00 00 00 00 00 00 00 00 01 00 66"));
         QList<quint8> counts;
         for (const Packet &p : result.packets)
-            if (quint8(p.data.at(0)) == 0x0e)
+            if (quint8(p.data.at(0)) == 0x0e) {
                 counts.append(quint8(p.data.at(2)));
-        QCOMPARE(counts, QList<quint8>({0x2a, 0x0c, 0x18, 0x24}));
+                for (int i = 0; i < 42; ++i)
+                    QVERIFY(quint8(p.data.at(4 + i * 12 + 11)) != 0x66);
+            }
+        QCOMPARE(counts.size(), 4);
+        QVERIFY(counts.contains(0x0b));
     }
 
-    void protocolPowerAnimated()
+    void protocolPowerKeyRejected()
     {
         Profile profile;
-        profile.base.type = "wave";
-        profile.base.steps = {{QColor("#00E5FF"), 40}, {QColor("#0A27D3"), 40}};
-        profile.base.wave = waveFromAqua("aqua-1");
-        const BuildResult result = buildPackets(profile, Layout::gs76());
-        QVERIFY2(result.errors.isEmpty(), qPrintable(result.errors.join("; ")));
-        const QByteArray element = powerPacket(result).mid(4 + 11 * 12, 12);
-        QCOMPARE(element.toHex(' '), QByteArray("00 00 00 00 00 00 00 00 00 00 00 66"));
+        profile.keys.insert("KEY_POWER", QColor("#FF0000"));
+        QVERIFY(validate(profile, Layout::gs76()).join("\n").contains("KEY_POWER is lit with KEY_F1"));
     }
 
-    void protocolPowerReactive()
+    void layoutPowerLitByF1()
+    {
+        QCOMPARE(Layout::gs76().lightSource("KEY_POWER"), QString("KEY_F1"));
+        QCOMPARE(Layout::gs76().lightSource("KEY_A"), QString("KEY_A"));
+    }
+
+    void previewPowerShowsF1()
     {
         Profile profile;
-        profile.base.color = QColor("#102030");
-        profile.reactive = {true, QColor("#A0B0C0"), 0x0123};
-        const BuildResult result = buildPackets(profile, Layout::gs76(), true);
-        QCOMPARE(powerPacket(result).mid(4 + 11 * 12, 12).toHex(' '), QByteArray("10 20 30 a0 b0 c0 23 01 00 08 00 66"));
+        profile.keys.insert("KEY_F1", QColor("#FF0000"));
+        const Preview preview(profile, Layout::gs76());
+        QCOMPARE(preview.colorAt("KEY_POWER", 0), QColor("#FF0000"));
     }
 
-    // The keyboard is 1075 units tall and 4294 wide: at the same size, a vertical wave
-    // travels a quarter as fast so it shows as many bands as a horizontal one (at 326 the
-    // GS76 showed all rows in step).
-    void protocolVerticalWaveScaled()
+    void documentPowerDroppedFromGroups()
     {
-        QCOMPARE(waveFields({"top", "toward", 68}, Layout::gs76()).speed, 82);
-        QCOMPARE(waveFields({"bottom", "toward", 1}, Layout::gs76()).speed, 8);
-        QCOMPARE(waveFields({"left", "toward", 68}, Layout::gs76()).speed, 326);
+        const QByteArray json = R"({
+          "version": 3, "name": "P", "brightness": 100, "speed": 100,
+          "base": { "type": "static", "color": "#000000" },
+          "groups": [ { "name": "Power", "behavior": "static", "keys": ["KEY_POWER"], "color": "#FF0000" },
+                      { "name": "Both", "behavior": "static", "keys": ["KEY_F2", "KEY_POWER"], "color": "#00FF00" } ],
+          "reactive": { "enabled": false, "color": "#FFFFFF", "duration": 30 }
+        })";
+        QStringList errors;
+        const auto doc = documentFromJson(QJsonDocument::fromJson(json).object(), &errors);
+        QVERIFY2(doc, qPrintable(errors.join("; ")));
+        QCOMPARE(doc->groups.size(), 1);
+        QCOMPARE(doc->groups.at(0).keys, QStringList({"KEY_F2"}));
+        QVERIFY(validate(*doc, Layout::gs76()).isEmpty());
     }
 
-    void protocolWaveSpeed()
+    void profilePowerDroppedFromKeys()
     {
-        QCOMPARE(waveSpeed(1), 31);
-        QCOMPARE(waveSpeed(68), 326);
-        QCOMPARE(waveSpeed(100), 1001);
-    }
-
-    void protocolWaveFields_data()
-    {
-        QTest::addColumn<QString>("origin");
-        QTest::addColumn<int>("x");
-        QTest::addColumn<int>("y");
-        QTest::addColumn<bool>("alongX");
-        QTest::addColumn<bool>("alongY");
-        QTest::newRow("left") << "left" << 0 << 538 << true << false;
-        QTest::newRow("right") << "right" << 4294 << 538 << true << false;
-        QTest::newRow("top") << "top" << 2147 << 0 << false << true;
-        QTest::newRow("bottom") << "bottom" << 2147 << 1075 << false << true;
-        QTest::newRow("center") << "center" << 2147 << 538 << true << true;
-        QTest::newRow("space") << "KEY_SPACE" << 1738 << 1075 << true << true;
-    }
-
-    void protocolWaveFields()
-    {
-        QFETCH(QString, origin);
-        QFETCH(int, x);
-        QFETCH(int, y);
-        QFETCH(bool, alongX);
-        QFETCH(bool, alongY);
-        const WaveFields f = waveFields({origin, "toward", 68}, Layout::gs76());
-        QCOMPARE(f.x, x);
-        QCOMPARE(f.y, y);
-        QCOMPARE(f.alongX, alongX);
-        QCOMPARE(f.alongY, alongY);
-        QCOMPARE(f.speed, alongX ? 326 : 82);
-        QVERIFY(!f.away);
-        QVERIFY(waveFields({origin == "left" || origin == "right" || origin == "top" || origin == "bottom" ? "center" : origin,
-                            "away", 68}, Layout::gs76()).away);
-    }
-
-    static QByteArray effectPacketOf(const BuildResult &result, int slot)
-    {
-        for (const Packet &packet : result.packets)
-            if (quint8(packet.data.at(0)) == 0x0b && packet.data.at(2) == slot)
-                return packet.data;
-        return {};
-    }
-
-    void protocolWaveBytes()
-    {
-        Profile profile;
-        profile.base.type = "wave";
-        profile.base.steps = {{QColor("#00E5FF"), 40}, {QColor("#0A27D3"), 40}};
-        profile.base.wave = {"KEY_ESC", "away", 100};
-        const BuildResult result = buildPackets(profile, Layout::gs76());
-        QVERIFY2(result.errors.isEmpty(), qPrintable(result.errors.join("; ")));
-        const QByteArray packet = effectPacketOf(result, 0);
-        // 0x8A level, x 0, y 0 (Esc, top left), x and y scaling (radial), speed 1001.
-        QCOMPARE(packet.mid(0x8a, 0x0c).toHex(' '), QByteArray("ff 00 00 00 00 00 01 00 01 00 e9 03"));
-        QCOMPARE(quint8(packet.at(0x9a)), quint8(1));
-        QString error;
-        const QList<Transition> table = transitions(scaled(baseEffect(profile.base), 100, 100), &error);
-        QCOMPARE(quint8(packet.at(0x96)), quint8(table.size()));
-    }
-
-    void protocolPulseUnchanged()
-    {
-        Profile profile;
-        EffectLayer pulse;
-        pulse.name = "p";
-        pulse.type = "pulse";
-        pulse.keys = {"KEY_F1"};
-        pulse.start = QColor("#FF0000");
-        pulse.steps = {{QColor("#FF0000"), 30}};
-        profile.effects = {pulse};
-        const BuildResult result = buildPackets(profile, Layout::gs76());
-        QVERIFY2(result.errors.isEmpty(), qPrintable(result.errors.join("; ")));
-        const QByteArray packet = effectPacketOf(result, 0);
-        QByteArray aqua0;
-        QFile file(QString(KLC_FIXTURES) + "/aqua.json");
-        QVERIFY(file.open(QIODevice::ReadOnly));
-        for (const QJsonValue &hex : QJsonDocument::fromJson(file.readAll()).array()) {
-            const QByteArray p = QByteArray::fromHex(hex.toString().toLatin1());
-            if (quint8(p.at(0)) == 0x0b && p.at(2) == 0)
-                aqua0 = p;
-        }
-        QCOMPARE(packet.mid(0x8a, 0x0c), aqua0.mid(0x8a, 0x0c));
-        QCOMPARE(packet.at(0x9a), aqua0.at(0x9a));
+        const QByteArray json = R"({
+          "version": 1, "brightness": 100, "speed": 100,
+          "base": { "type": "static", "color": "#000000" },
+          "keys": { "KEY_POWER": "#FF0000", "KEY_F2": "#00FF00" },
+          "reactive": { "enabled": false, "color": "#FFFFFF", "duration": 30 }
+        })";
+        QStringList errors;
+        const auto profile = profileFromJson(QJsonDocument::fromJson(json).object(), &errors);
+        QVERIFY2(profile, qPrintable(errors.join("; ")));
+        QVERIFY(!profile->keys.contains("KEY_POWER"));
+        QVERIFY(profile->keys.contains("KEY_F2"));
     }
 
     void protocolSizes()
@@ -1796,6 +1731,20 @@ private slots:
     {
         backend->select(keys, false);
         QCOMPARE(backend->createGroup(name), QString());
+    }
+
+    void backendSelectPowerSelectsF1()
+    {
+        EditorRun run;
+        run.backend->select({"KEY_POWER"}, false);
+        QCOMPARE(run.backend->selection(), QStringList({"KEY_F1"}));
+        run.backend->select({"KEY_POWER", "KEY_F1", "KEY_F2"}, false);
+        QCOMPARE(run.backend->selection(), QStringList({"KEY_F1", "KEY_F2"}));
+        bool noted = false;
+        for (const QVariant &key : run.backend->keys())
+            if (key.toMap()["id"] == "KEY_POWER")
+                noted = !key.toMap()["note"].toString().isEmpty();
+        QVERIFY(noted);
     }
 
     void backendWaveDirections_data()

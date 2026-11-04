@@ -190,3 +190,22 @@ The radial checks could not tell, since at size 68 the height adds little lag.
 Re-checked after the flip: toward the top runs up to the F row, toward the bottom runs
 down to the space bar, and a small radial wave out from the space bar (size 15) rings
 upward and outward from it. Every direction now matches the editor.
+
+## The power key is F1's twin (2026-11-04)
+
+The first power-key checks were misleading: with the rest of the board lit, the power
+key looked "red but orange" or turned yellow with the wave. Bisecting with everything
+else black (power red as element 0x66, groups of keys set to green) found the cause:
+
+| sent (everything else black) | seen |
+|---|---|
+| power red | power red |
+| power red, the 12 hidden codes green | power red |
+| power red, F1 green (bisection down to one key) | power **yellow** |
+| power green, F1 black | power green **and keypad 3 green** |
+| F1 magenta, no power element | F1 and power **magenta** |
+| F1 red, no power element | F1 red, power red (duller, tinted by the orange indicator beside it) |
+
+The power key's LED is driven by F1's output; code 0x66 adds to it and also lights
+keypad 3. klc-light therefore sends no power element (the 11-key packet is back to
+11) and treats the power key as F1's twin: drawn in F1's color, selecting F1.

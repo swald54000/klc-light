@@ -54,10 +54,14 @@ Backend::Backend(ThemePaths paths, QString libraryDir, KeyLabels labels, Sender 
     : QObject(parent), m_paths(std::move(paths)), m_library(std::move(libraryDir)), m_labels(std::move(labels)),
       m_sender(std::move(sender)), m_colorsPath(std::move(colorsPath)) {
     qRegisterMetaType<ApplyResult>();
-    for (const Key &key : Layout::gs76().keys())
-        m_keys.append(QVariantMap{{"id", key.id}, {"label", m_labels.label(key)}, {"x", key.x}, {"y", key.y},
-                                  {"left", key.x - key.w / 2}, {"right", key.x + key.w / 2},
-                                  {"top", key.y - key.h / 2}, {"bottom", key.y + key.h / 2}});
+    for (const Key &key : Layout::gs76().keys()) {
+        QVariantMap entry{{"id", key.id}, {"label", m_labels.label(key)}, {"x", key.x}, {"y", key.y},
+                          {"left", key.x - key.w / 2}, {"right", key.x + key.w / 2},
+                          {"top", key.y - key.h / 2}, {"bottom", key.y + key.h / 2}};
+        if (Layout::gs76().lightSource(key.id) != key.id)
+            entry.insert("note", tr("Lit with F1 (same circuit)"));
+        m_keys.append(entry);
+    }
 
     m_cooldown.setInterval(100);
     connect(&m_cooldown, &QTimer::timeout, this, [this] {
@@ -259,9 +263,12 @@ void Backend::openReactive() {
 
 void Backend::select(const QStringList &ids, bool add) {
     QStringList next = add ? m_selection : QStringList();
-    for (const QString &id : ids)
+    // Clicking the power key picks F1, whose output lights it.
+    for (const QString &shown : ids) {
+        const QString id = Layout::gs76().lightSource(shown);
         if (!next.contains(id) && Layout::gs76().byId(id))
             next.append(id);
+    }
     setSelection(next);
 
     if (next.isEmpty()) {
