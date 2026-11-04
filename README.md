@@ -48,20 +48,11 @@ In a profile file a wave reads:
 `aqua-3` to the left, the others to the centre. They are written in the new
 form (profile version 3) the next time they are saved.
 
-The power key, top right, has no light of its own: its LED is wired to F1's
-output and always shows F1's color, so the editor draws it in F1's color and a
-click on it picks F1. Power keys found in older profiles or groups are dropped
-when read. The small orange light beside it is a separate indicator the
-keyboard controller does not drive.
-
-## Reactive keys
-
-The REACTIVE row turns on keys that light up when pressed: the pressed color
-lasts the chosen duration, 50 to 2000 ms (300 by default), then fades back.
-The keyboard's LED matrix leaks a little light, mostly green, into some
-neighbouring keys (pressing A in AZERTY also glows Z faintly): pressed colors
-with little green avoid it. `--experimental-reactive` is no longer needed and
-is ignored.
+The power key, top right, takes one steady color: its own, or the first color
+of the animation it belongs to (no reactive glow). It is lit by a separate
+per-key overlay sent after every burst, since the key tables would light F1
+and keypad 3 along with it. The small orange light beside it is a separate
+indicator the keyboard controller does not drive.
 
 ## Profile library
 

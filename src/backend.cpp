@@ -58,8 +58,8 @@ Backend::Backend(ThemePaths paths, QString libraryDir, KeyLabels labels, Sender 
         QVariantMap entry{{"id", key.id}, {"label", m_labels.label(key)}, {"x", key.x}, {"y", key.y},
                           {"left", key.x - key.w / 2}, {"right", key.x + key.w / 2},
                           {"top", key.y - key.h / 2}, {"bottom", key.y + key.h / 2}};
-        if (Layout::gs76().lightSource(key.id) != key.id)
-            entry.insert("note", tr("Lit with F1 (same circuit)"));
+        if (key.id == "KEY_POWER")
+            entry.insert("note", tr("One steady color: the first of an animation, no reactive glow"));
         m_keys.append(entry);
     }
 
@@ -263,12 +263,9 @@ void Backend::openReactive() {
 
 void Backend::select(const QStringList &ids, bool add) {
     QStringList next = add ? m_selection : QStringList();
-    // Clicking the power key picks F1, whose output lights it.
-    for (const QString &shown : ids) {
-        const QString id = Layout::gs76().lightSource(shown);
+    for (const QString &id : ids)
         if (!next.contains(id) && Layout::gs76().byId(id))
             next.append(id);
-    }
     setSelection(next);
 
     if (next.isEmpty()) {

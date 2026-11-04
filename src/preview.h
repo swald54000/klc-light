@@ -40,5 +40,6 @@ private:
     QHash<QString, int> m_slotOfKey;
     QList<Animated> m_animated;
     QColor m_base;
+    QColor m_power;
     int m_baseSlot = -1;
 };

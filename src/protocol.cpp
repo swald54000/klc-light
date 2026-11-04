@@ -113,8 +113,8 @@ QByteArray effectPacket(const QByteArray &templatePacket, int slot, const Effect
 }
 
 // Byte 2 counts the key elements that follow (GG's `length`): 42, 11, 24 and 36. The power
-// key has no element of its own: its LED is wired to F1's output, and code 0x66, accepted
-// as a twelfth element, lights keypad 3 as well (docs/origins.md).
+// key has no element here: code 0x66 in these tables lights F1's twin and keypad 3; its own
+// LED takes the 0x0C overlay instead (docs/origins.md).
 QByteArray regionPacket(const QList<QByteArray> &fragments, bool staticTrailer) {
     QByteArray packet(4, '\0');
     packet[0] = 0x0e;
@@ -132,6 +132,25 @@ QByteArray regionPacket(const QList<QByteArray> &fragments, bool staticTrailer) 
     return packet + trailer;
 }
 
+// The per-key overlay of the GE76 notes (mode 0x66, [code, R, G, B] entries, unused bytes
+// 0xFF), then its 0x0D commit. On the GS76 it lights the power key alone; the next burst
+// clears it, so it follows every burst.
+QList<Packet> powerOverlay(const QColor &color) {
+    QByteArray overlay(kFeatureSize, char(0xFF));
+    overlay[0] = 0x0c;
+    overlay[1] = 0x00;
+    overlay[2] = 0x66;
+    overlay[3] = 0x00;
+    overlay[4] = 0x66;
+    overlay[5] = char(color.red());
+    overlay[6] = char(color.green());
+    overlay[7] = char(color.blue());
+    QByteArray commit(kOutputSize, '\0');
+    commit[0] = 0x0d;
+    commit[2] = 0x02;
+    return {{Packet::Feature, overlay}, {Packet::Output, commit}};
+}
+
 Packet outputRefresh() {
     QByteArray data(kOutputSize, '\0');
     data[0] = 0x09;
@@ -139,6 +158,18 @@ Packet outputRefresh() {
 }
 
 } // namespace
+
+QColor powerColor(const Profile &profile) {
+    QColor color = profile.keys.value("KEY_POWER");
+    if (!profile.keys.contains("KEY_POWER")) {
+        auto layer = std::find_if(profile.effects.begin(), profile.effects.end(),
+                                  [](const EffectLayer &l) { return l.keys.contains("KEY_POWER"); });
+        color = layer != profile.effects.end() ? layerEffect(*layer).start
+              : profile.base.type == "static" ? profile.base.color
+                                              : baseEffect(profile.base).start;
+    }
+    return scaledColor(color, profile.brightness);
+}
 
 int waveSpeed(int size) {
     return int(std::lround(31.0 * std::pow(1001.0 / 31.0, (std::clamp(size, 1, 100) - 1) / 99.0)));
@@ -224,6 +255,7 @@ BuildResult buildPackets(const Profile &profile, const Layout &layout) {
             result.packets.append({Packet::Feature, regionPacket(fragments, true)});
         }
         result.packets.append(outputRefresh());
+        result.packets += powerOverlay(powerColor(profile));
         return result;
     }
 
@@ -263,9 +295,10 @@ BuildResult buildPackets(const Profile &profile, const Layout &layout) {
         if (quint8(packet.at(0)) == 0x09)
             result.packets.append({Packet::Feature, packet});
     result.packets.append(outputRefresh());
+    result.packets += powerOverlay(powerColor(profile));
 
     for (const Packet &packet : result.packets) {
-        const bool refresh = quint8(packet.data.at(0)) == 0x09;
+        const bool refresh = quint8(packet.data.at(0)) == 0x09 || quint8(packet.data.at(0)) == 0x0d;
         if (packet.data.size() != (refresh ? kOutputSize : kFeatureSize))
             result.errors.append(QString("internal: packet of %1 bytes").arg(packet.data.size()));
     }

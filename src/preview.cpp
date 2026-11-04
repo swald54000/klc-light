@@ -4,7 +4,7 @@
 
 #include "layout.h"
 
-Preview::Preview(const Profile &profile, const Layout &layout) : m_layout(layout) {
+Preview::Preview(const Profile &profile, const Layout &layout) : m_layout(layout), m_power(powerColor(profile)) {
     m_base = scaled(EffectDef{profile.base.color, {}, 1, {}}, profile.brightness, 100).start;
     for (auto it = profile.keys.begin(); it != profile.keys.end(); ++it)
         m_static.insert(it.key(), scaled(EffectDef{it.value(), {}, 1, {}}, profile.brightness, 100).start);
@@ -57,9 +57,10 @@ QColor Preview::cycleColor(const EffectDef &def, qint64 ms) const {
     return def.start;
 }
 
-QColor Preview::colorAt(const QString &shownId, qint64 ms) const {
-    // A key wired to another one's output shows that key's light.
-    const QString keyId = m_layout.lightSource(shownId);
+QColor Preview::colorAt(const QString &keyId, qint64 ms) const {
+    // The power key shows one steady color, from its overlay (protocol.h).
+    if (keyId == "KEY_POWER")
+        return m_power;
     int slot = m_slotOfKey.value(keyId, -1);
     if (slot < 0 && m_static.contains(keyId))
         return m_static.value(keyId);
