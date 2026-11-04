@@ -13,7 +13,7 @@
 #include "cli.h"
 #include "device.h"
 #include "document.h"
-#include "sudobinder.h"
+#include "sysfsbinder.h"
 #include "effects.h"
 #include "keylabels.h"
 #include "layout.h"
@@ -60,6 +60,20 @@ private:
         return ++sent != failAt;
     }
     FakeLog &m_log;
+};
+
+// Records what would be written to `authorized` instead of writing it.
+class RecordingBinder : public SysfsBinder {
+public:
+    using SysfsBinder::SysfsBinder;
+    QStringList writes;
+    QString path;
+protected:
+    bool writeAuthorized(const QString &file, const QByteArray &value, QString *) override {
+        path = file;
+        writes << QString::fromLatin1(value);
+        return true;
+    }
 };
 
 class FakeBinder : public Binder {
@@ -1449,13 +1463,32 @@ private slots:
 
         QElapsedTimer timer;
         timer.start();
-        SudoBinder missing("/nonexistent/msi-kbd-usb");
+        SysfsBinder missing("/nonexistent");
         QString error;
         QVERIFY(!missing.bind(&error));
-        QVERIFY(error.contains("msi-kbd-usb"));
+        QVERIFY(error.contains("1038:113a"));
         QVERIFY(timer.elapsed() < 1000);
     }
 
+
+    // A fake /sys/bus/usb/devices: the KLC on 3-12 (with its driver link unless told not to)
+    // and a mouse on 1-1.
+    static QString fakeUsbDevices(const QTemporaryDir &dir, bool withDriver = true)
+    {
+        const QString root = dir.path() + "/devices";
+        QDir().mkpath(root + "/3-12");
+        QDir().mkpath(root + "/1-1");
+        QDir().mkpath(dir.path() + "/drivers/usb");
+        write(root + "/3-12/idVendor", "1038\n");
+        write(root + "/3-12/idProduct", "113a\n");
+        write(root + "/3-12/authorized", "1\n");
+        write(root + "/1-1/idVendor", "046d\n");
+        write(root + "/1-1/idProduct", "c52b\n");
+        write(root + "/1-1/authorized", "1\n");
+        if (withDriver)
+            QFile::link(dir.path() + "/drivers/usb", root + "/3-12/driver");
+        return root;
+    }
 
     // A library profile with a plain colour, optionally linked to a theme.
     static void addProfile(const QTemporaryDir &dir, const QString &name, const QString &color, const QString &theme = {})
@@ -1691,6 +1724,53 @@ private slots:
         QVERIFY(QJsonDocument::fromJson(run.out.toUtf8()).object().value("packets").toInt() > 0);
         QVERIFY(run.log.events.isEmpty());
         QVERIFY(!Library(dir.path() + "/klc").off());
+    }
+
+    void sysfsBinderCycle()
+    {
+        QTemporaryDir dir;
+        RecordingBinder binder(fakeUsbDevices(dir));
+        QString error;
+        QVERIFY2(binder.bind(&error), qPrintable(error));
+        QCOMPARE(binder.writes, QStringList({"0", "1"}));
+        QCOMPARE(binder.path, dir.path() + "/devices/3-12/authorized");
+        binder.writes.clear();
+        QVERIFY2(binder.unbind(&error), qPrintable(error));
+        QCOMPARE(binder.writes, QStringList({"0"}));
+    }
+
+    void sysfsBinderMissing()
+    {
+        QTemporaryDir dir;
+        const QString root = fakeUsbDevices(dir);
+        QFile::remove(root + "/3-12/idProduct");
+        SysfsBinder binder(root);
+        QString error;
+        QVERIFY(!binder.bind(&error));
+        QVERIFY2(error.contains("1038:113a"), qPrintable(error));
+    }
+
+    void sysfsBinderPermissionDenied()
+    {
+        QTemporaryDir dir;
+        const QString root = fakeUsbDevices(dir);
+        QFile::setPermissions(root + "/3-12/authorized", QFile::ReadOwner | QFile::ReadGroup | QFile::ReadOther);
+        SysfsBinder binder(root);
+        QString error;
+        QVERIFY(!binder.unbind(&error));
+        QCOMPARE(error, QString("Add your user to the klc-light group (sudo usermod -aG klc-light $USER), then log in again."));
+    }
+
+    // Detached from its driver by the old msi-kbd-usb, the controller takes no configuration
+    // when authorised again; a full power-off binds it at boot.
+    void sysfsBinderDriverDetached()
+    {
+        QTemporaryDir dir;
+        RecordingBinder binder(fakeUsbDevices(dir, false));
+        QString error;
+        QVERIFY(!binder.bind(&error));
+        QVERIFY2(error.contains("power"), qPrintable(error));
+        QVERIFY(!error.contains("1038:113a")); // not "absent": exit status 1, not 2
     }
 
     void cliNothing()

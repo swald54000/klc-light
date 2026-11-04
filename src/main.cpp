@@ -17,7 +17,7 @@
 #include "cli.h"
 #include "device.h"
 #include "hidapitransport.h"
-#include "sudobinder.h"
+#include "sysfsbinder.h"
 #include "theme.h"
 #include "translator.h"
 
@@ -33,7 +33,7 @@ int runCommand(int argc, char *argv[]) {
     app.installTranslator(&translator);
 
     HidapiTransport transport;
-    SudoBinder binder;
+    SysfsBinder binder;
     QString runtime = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
     if (runtime.isEmpty())
         runtime = QDir::tempPath();
@@ -73,7 +73,7 @@ int main(int argc, char *argv[]) {
     // KLC_LIGHT_FAKE_DEVICE=1 prints the packets instead of sending them, for trying the
     // editor without touching the keyboard.
     HidapiTransport transport;
-    SudoBinder binder;
+    SysfsBinder binder;
     QString runtime = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
     if (runtime.isEmpty())
         runtime = QDir::tempPath();
