@@ -255,3 +255,22 @@ slots 0..17, each its own color; the six captured slots first in their order, th
 6..17): all 18 keys pulsed. Caps Lock, S and T glowed faintly green in step: LED-matrix
 ghosting from their lit neighbours, as with reactive keys. klc-light allows 18 animated
 groups.
+
+## Attaching the controller without root: sysfs `authorized` (2026-11-04)
+
+Until 0.4.0 KLC Light attached the controller to the kernel's `usb` driver through a
+root helper (`echo <port> > /sys/bus/usb/drivers/usb/bind`, then `unbind` after the send:
+the controller only shows a new burst once detached). Measured on the GS76 instead:
+
+- With the controller left without its driver by that `unbind`, writing `1` to its
+  `authorized` file authorises it ("authorized to connect") but nothing configures it: no
+  driver, `bConfigurationValue` empty, no hidraw. The driver has to be bound once (a full
+  power-off does it at boot).
+- With the driver bound, `authorized` 0 → 1 reconfigures the controller (two interfaces,
+  hidraw back), the burst is sent, and `authorized` 0 detaches it; the driver stays
+  bound. Two cycles in a row (Jarvis, then Tron) showed the right colors with no error.
+- After a full power-off the controller comes back authorised with its driver; the
+  package's udev rule gives `authorized` to the `klc-light` group (mode 664) at each
+  `add`, and the boot hook's `klc-light apply` showed the profile without sudo.
+
+So 0.5.0 drops the helper and its sudoers rule: `SysfsBinder` only writes that one file.
