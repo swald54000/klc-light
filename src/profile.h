@@ -74,7 +74,7 @@ struct Profile {
 
 // The firmware limits this version of the app works within.
 constexpr int kMaxSteps = 16;
-constexpr int kMaxAnimatedSlots = 6;
+constexpr int kMaxAnimatedSlots = 18; // GG declares 18 effect ids; all 18 measured on the GS76
 
 QJsonObject toJson(const Profile &profile);
 std::optional<Profile> profileFromJson(const QJsonObject &object, QStringList *errors);

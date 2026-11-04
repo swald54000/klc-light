@@ -246,3 +246,12 @@ So the power key's LED works, but on the GS76 it shows F1's color whatever is se
 own setting (overlay, or code 0x66 in a table, which also lights keypad 3) only shows
 while F1 is off, or mixed in. klc-light keeps the power key as F1's twin and sends no
 overlay. The GE76 lights it on its own: the link is particular to the GS76.
+
+## Eighteen effect slots (2026-11-04)
+
+GG's `lighting_element_info.effect_index` ranges 0x00..0x11 and `ss-klc-base` declares
+effect reports up to `effect_18`. One send with 18 one-key pulse groups (F1..F12, 1..6,
+slots 0..17, each its own color; the six captured slots first in their order, then
+6..17): all 18 keys pulsed. Caps Lock, S and T glowed faintly green in step: LED-matrix
+ghosting from their lit neighbours, as with reactive keys. klc-light allows 18 animated
+groups.

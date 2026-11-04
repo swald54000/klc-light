@@ -422,7 +422,7 @@ QString Backend::setBehavior(const QString &behavior) {
     }
     group.behavior = behavior;
     if (animatedSlots(lighting(next)) > kMaxAnimatedSlots)
-        return tr("At most 6 animated groups (controller limit)");
+        return tr("At most 18 animated groups (controller limit)");
     edit([&](Document &d) { d = next; });
     return QString();
 }

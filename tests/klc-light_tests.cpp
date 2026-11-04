@@ -306,7 +306,7 @@ private slots:
         QTest::newRow("speed") << R"({"speed": 500})" << "speed";
         QTest::newRow("missing base") << R"({"base": null})" << "base";
         QTest::newRow("too many steps") << "STEPS17" << "16";
-        QTest::newRow("too many effects") << "EFFECTS7" << "6";
+        QTest::newRow("too many effects") << "EFFECTS19" << "18";
         QTest::newRow("key in two effects") << "TWICE" << "KEY_F1";
     }
 
@@ -327,10 +327,10 @@ private slots:
         };
         if (patch == "STEPS17")
             object["effects"] = QJsonArray{effect("KEY_F1", 17)};
-        else if (patch == "EFFECTS7") {
+        else if (patch == "EFFECTS19") {
             QJsonArray effects;
-            for (int i = 1; i <= 7; ++i)
-                effects.append(effect(QString("KEY_F%1").arg(i), 2));
+            for (const QString &key : nineteenKeys())
+                effects.append(effect(key, 2));
             object["effects"] = effects;
         } else if (patch == "TWICE")
             object["effects"] = QJsonArray{effect("KEY_F1", 2), effect("KEY_F1", 2)};
@@ -858,8 +858,9 @@ private slots:
             g.steps.clear();
             d.groups = {g};
         } else {
-            for (int i = 0; i < 7; ++i)
-                d.groups.append(pulse(QString("P%1").arg(i), {QString("KEY_F%1").arg(i + 1)}));
+            const QStringList keys = nineteenKeys();
+            for (int i = 0; i < keys.size(); ++i)
+                d.groups.append(pulse(QString("P%1").arg(i), {keys.at(i)}));
         }
         const QStringList errors = validate(d, Layout::gs76());
         QVERIFY(!errors.isEmpty());
@@ -1765,6 +1766,17 @@ private slots:
     }
 
 
+    // One key more than the controller's 18 effect slots: F1..F12, then 1..7.
+    static QStringList nineteenKeys()
+    {
+        QStringList keys;
+        for (int i = 1; i <= 12; ++i)
+            keys << QString("KEY_F%1").arg(i);
+        for (int i = 1; i <= 7; ++i)
+            keys << QString("KEY_%1").arg(i);
+        return keys;
+    }
+
     // Makes a group from the given keys and leaves it open.
     static void makeGroup(Backend *backend, const QString &name, const QStringList &keys)
     {
@@ -1996,18 +2008,51 @@ private slots:
     void backendAnimatedLimit()
     {
         EditorRun run;
-        for (int i = 1; i <= 7; ++i)
-            makeGroup(run.backend, QString("F%1").arg(i), {QString("KEY_F%1").arg(i)});
-        for (int i = 0; i < 6; ++i) {
+        const QStringList keys = nineteenKeys();
+        for (const QString &key : keys)
+            makeGroup(run.backend, key.mid(4), {key});
+        for (int i = 0; i < 18; ++i) {
             run.backend->openGroup(i);
             QCOMPARE(run.backend->setBehavior("pulse"), QString());
         }
-        QCOMPARE(run.backend->animatedCount(), 6);
-        run.backend->openGroup(6);
+        QCOMPARE(run.backend->animatedCount(), 18);
+        run.backend->openGroup(18);
         const QJsonObject before = toJson(run.backend->document());
-        QCOMPARE(run.backend->setBehavior("pulse"), QString("At most 6 animated groups (controller limit)"));
+        QCOMPARE(run.backend->setBehavior("pulse"), QString("At most 18 animated groups (controller limit)"));
         QCOMPARE(toJson(run.backend->document()), before);
-        QCOMPARE(run.backend->animatedCount(), 6);
+        QCOMPARE(run.backend->animatedCount(), 18);
+    }
+
+    // 18 effect slots measured on the GS76: the six of the captured preset in its order,
+    // then 6..17.
+    void protocolEighteenSlots()
+    {
+        Profile profile;
+        const QStringList keys = nineteenKeys().mid(0, 18);
+        for (int i = 0; i < keys.size(); ++i) {
+            EffectLayer layer;
+            layer.name = QString("P%1").arg(i);
+            layer.type = "pulse";
+            layer.keys = {keys.at(i)};
+            layer.start = QColor("#FF0000");
+            layer.steps = {{QColor("#FF0000"), 50}, {QColor("#000000"), 50}};
+            profile.effects.append(layer);
+        }
+        const BuildResult result = buildPackets(profile, Layout::gs76());
+        QVERIFY2(result.errors.isEmpty(), qPrintable(result.errors.join("; ")));
+        QList<int> sent;
+        QHash<quint8, int> slotOfHid;
+        for (const Packet &p : result.packets) {
+            if (quint8(p.data.at(0)) == 0x0b)
+                sent.append(p.data.at(2));
+            if (quint8(p.data.at(0)) == 0x0e)
+                for (int i = 0; i < quint8(p.data.at(2)); ++i)
+                    if (p.data.at(4 + i * 12 + 9) == 0)
+                        slotOfHid.insert(quint8(p.data.at(4 + i * 12 + 11)), p.data.at(4 + i * 12 + 8));
+        }
+        QCOMPARE(sent, QList<int>({4, 3, 2, 1, 0, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17}));
+        for (int i = 0; i < keys.size(); ++i)
+            QCOMPARE(slotOfHid.value(Layout::gs76().byId(keys.at(i))->hid, -1), i);
     }
 
     void backendPaintGroup()
@@ -3382,10 +3427,10 @@ private slots:
     void uiBehaviorRefusalShowsError()
     {
         Ui ui;
-        const QStringList keys = {"KEY_Q", "KEY_W", "KEY_E", "KEY_R", "KEY_T", "KEY_Y", "KEY_U"};
-        for (int i = 0; i < 7; ++i) {
+        const QStringList keys = nineteenKeys();
+        for (int i = 0; i < keys.size(); ++i) {
             makeGroup(ui.run.backend, QString("G%1").arg(i), {keys.at(i)});
-            if (i < 6)
+            if (i < 18)
                 QVERIFY(ui.run.backend->setBehavior("pulse").isEmpty());
         }
         QQuickItem *box = nullptr;
@@ -3394,7 +3439,7 @@ private slots:
         QMetaObject::invokeMethod(box, "activated", Q_ARG(int, 1));
         QQuickItem *error = findItem(ui.window->contentItem(), "behaviorError");
         QTRY_VERIFY(error && error->isVisible());
-        QVERIFY(error->property("text").toString().contains("6"));
+        QVERIFY(error->property("text").toString().contains("18"));
         QCOMPARE(ui.run.backend->current().value("behavior").toString(), QString("static"));
         // The box goes back to what the group really is.
         QTRY_COMPARE(box->property("currentIndex").toInt(), 0);

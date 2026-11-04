@@ -240,8 +240,9 @@ BuildResult buildPackets(const Profile &profile, const Layout &layout) {
 
     result.packets.append(region(Region::Enter));
     result.packets.append(region(Region::Modifiers));
-    // The order the captured preset sends its effects in.
-    for (int slot : {4, 3, 2, 1, 0, 5}) {
+    // The captured preset's six in the order it sends them, then the twelve more the
+    // controller takes (GG's effect ids run to 17).
+    for (int slot : {4, 3, 2, 1, 0, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17}) {
         if (slot >= animated.size())
             continue;
         const EffectDef &def = animated[slot];
