@@ -1,5 +1,6 @@
 # KLC Light: the MSI SteelSeries KLC keyboard lighting controller (USB 1038:113a).
 # Its hidraw node goes to the user at the seat; its own `authorized` file, which KLC Light
-# toggles to attach and detach the controller, goes to the klc-light group.
+# toggles to attach and detach the controller, goes to the klc-light group. The rule also
+# runs on "change", which package installs trigger, and only for the built-in controller.
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1038", ATTRS{idProduct}=="113a", TAG+="uaccess"
-ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="1038", ATTR{idProduct}=="113a", RUN+="/usr/bin/chgrp klc-light /sys%p/authorized", RUN+="/usr/bin/chmod 0664 /sys%p/authorized"
+ACTION!="remove", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="1038", ATTR{idProduct}=="113a", ATTR{removable}=="fixed", RUN+="/usr/bin/chgrp klc-light /sys%p/authorized", RUN+="/usr/bin/chmod 0664 /sys%p/authorized"

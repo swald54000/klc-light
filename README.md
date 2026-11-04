@@ -34,19 +34,33 @@ of sent.
 
 ### Omarchy hooks
 
-To change the lighting with the theme and restore it at boot, add two hooks:
+To change the lighting with the theme and restore it at boot, add two hooks. Omarchy waits
+for its hooks, so they hand the send to the background (a send can wait a few seconds for
+the previous one). A status of 2 means the controller dropped off the USB bus, which only a
+full power-off clears.
+
+`~/.config/omarchy/hooks/theme-set.d/klc-light`:
 
 ```sh
-# ~/.config/omarchy/hooks/theme-set.d/klc-light
 #!/bin/sh
-klc-light apply --theme
-
-# ~/.config/omarchy/hooks/post-boot.d/klc-light
-#!/bin/sh
-klc-light apply
+setsid --fork bash -c 'set -o pipefail
+  klc-light apply --theme 2>&1 | systemd-cat -t klc-light
+  [ $? -eq 2 ] && notify-send -u critical -a "KLC Light" "Keyboard lighting controller lost (USB error -71)" \
+    "Shut the computer down completely, then start it again: a restart is not enough."' </dev/null >/dev/null 2>&1
 ```
 
-(make both executable). A theme without a linked profile leaves the keyboard alone.
+`~/.config/omarchy/hooks/post-boot.d/klc-light`:
+
+```sh
+#!/bin/sh
+setsid --fork bash -c 'set -o pipefail
+  klc-light apply 2>&1 | systemd-cat -t klc-light
+  [ $? -eq 2 ] && notify-send -u critical -a "KLC Light" "Keyboard lighting controller lost (USB error -71)" \
+    "Shut the computer down completely, then start it again: a restart is not enough."' </dev/null >/dev/null 2>&1
+```
+
+A theme without a linked profile leaves the keyboard alone; messages go to the user journal
+(`journalctl --user -t klc-light`).
 
 ### Bar widget
 

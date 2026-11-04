@@ -14,6 +14,7 @@
 #include "device.h"
 #include "document.h"
 #include "sysfsbinder.h"
+#include <unistd.h>
 #include "effects.h"
 #include "keylabels.h"
 #include "layout.h"
@@ -68,12 +69,24 @@ public:
     using SysfsBinder::SysfsBinder;
     QStringList writes;
     QString path;
+    QString group = "klc-light";
 protected:
+    QString fileGroup(const QString &) const override { return group; }
     bool writeAuthorized(const QString &file, const QByteArray &value, QString *) override {
         path = file;
         writes << QString::fromLatin1(value);
         return true;
     }
+};
+
+// A binder whose writes really go to the files, with the file's group faked.
+class GroupBinder : public SysfsBinder {
+public:
+    GroupBinder(const QString &root, const QString &group) : SysfsBinder(root), m_group(group) {}
+protected:
+    QString fileGroup(const QString &) const override { return m_group; }
+private:
+    QString m_group;
 };
 
 class FakeBinder : public Binder {
@@ -1471,6 +1484,13 @@ private slots:
     }
 
 
+    static QString readOnlyKlc(const QTemporaryDir &dir)
+    {
+        const QString root = fakeUsbDevices(dir);
+        QFile::setPermissions(root + "/3-12/authorized", QFile::ReadOwner | QFile::ReadGroup | QFile::ReadOther);
+        return root;
+    }
+
     // A fake /sys/bus/usb/devices: the KLC on 3-12 (with its driver link unless told not to)
     // and a mouse on 1-1.
     static QString fakeUsbDevices(const QTemporaryDir &dir, bool withDriver = true)
@@ -1482,9 +1502,11 @@ private slots:
         write(root + "/3-12/idVendor", "1038\n");
         write(root + "/3-12/idProduct", "113a\n");
         write(root + "/3-12/authorized", "1\n");
+        write(root + "/3-12/removable", "fixed\n");
         write(root + "/1-1/idVendor", "046d\n");
         write(root + "/1-1/idProduct", "c52b\n");
         write(root + "/1-1/authorized", "1\n");
+        write(root + "/1-1/removable", "removable\n");
         if (withDriver)
             QFile::link(dir.path() + "/drivers/usb", root + "/3-12/driver");
         return root;
@@ -1750,15 +1772,70 @@ private slots:
         QVERIFY2(error.contains("1038:113a"), qPrintable(error));
     }
 
+    // In the group's file but not in the group: the usermod message.
     void sysfsBinderPermissionDenied()
     {
+        if (geteuid() == 0)
+            QSKIP("root ignores file permissions");
         QTemporaryDir dir;
-        const QString root = fakeUsbDevices(dir);
-        QFile::setPermissions(root + "/3-12/authorized", QFile::ReadOwner | QFile::ReadGroup | QFile::ReadOther);
-        SysfsBinder binder(root);
+        GroupBinder binder(readOnlyKlc(dir), "klc-light");
         QString error;
         QVERIFY(!binder.unbind(&error));
         QCOMPARE(error, QString("Add your user to the klc-light group (sudo usermod -aG klc-light $USER), then log in again."));
+    }
+
+    // The file is still root's: the udev rule has not run (installed, not yet rebooted).
+    void sysfsBinderRuleNotApplied()
+    {
+        if (geteuid() == 0)
+            QSKIP("root ignores file permissions");
+        QTemporaryDir dir;
+        GroupBinder binder(readOnlyKlc(dir), "root");
+        QString error;
+        QVERIFY(!binder.unbind(&error));
+        QVERIFY2(error.contains("udev rule") && error.contains("restart"), qPrintable(error));
+        QVERIFY(!error.contains("usermod"));
+    }
+
+    // Gone between finding it and writing (the controller dropping off the bus).
+    void sysfsBinderWriteFailsOtherwise()
+    {
+        QTemporaryDir dir;
+        const QString root = fakeUsbDevices(dir);
+        // A directory in its place: the write fails, and not for lack of permission.
+        QFile::remove(root + "/3-12/authorized");
+        QDir().mkpath(root + "/3-12/authorized");
+        SysfsBinder binder(root);
+        QString error;
+        QVERIFY(!binder.unbind(&error));
+        QVERIFY2(!error.contains("usermod") && !error.contains("udev rule"), qPrintable(error));
+    }
+
+    // The real controller is internal; a removable device claiming its id is not touched.
+    void sysfsBinderIgnoresRemovable()
+    {
+        QTemporaryDir dir;
+        const QString root = fakeUsbDevices(dir);
+        write(root + "/3-12/removable", "removable\n");
+        RecordingBinder binder(root);
+        QString error;
+        QVERIFY(!binder.bind(&error));
+        QVERIFY(binder.writes.isEmpty());
+        QVERIFY2(error.contains("1038:113a"), qPrintable(error));
+    }
+
+    // Package install sends `change`, not `add`: the rule must run then too, and only for
+    // the internal controller.
+    void udevRuleRunsOnChange()
+    {
+        QFile rules(QString(KLC_FIXTURES) + "/../../pkgbuild/70-klc-light.rules");
+        QVERIFY(rules.open(QIODevice::ReadOnly));
+        QString line;
+        for (const QString &l : QString::fromUtf8(rules.readAll()).split('\n'))
+            if (l.contains("authorized") && !l.startsWith('#'))
+                line = l;
+        QVERIFY2(line.contains("ACTION!=\"remove\""), qPrintable(line));
+        QVERIFY2(line.contains("ATTR{removable}==\"fixed\""), qPrintable(line));
     }
 
     // Detached from its driver by the old msi-kbd-usb, the controller takes no configuration

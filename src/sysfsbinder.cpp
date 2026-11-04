@@ -4,6 +4,8 @@
 #include <QFile>
 #include <QFileInfo>
 
+#include <cerrno>
+
 namespace {
 
 QByteArray readTrimmed(const QString &path) {
@@ -19,7 +21,10 @@ QString SysfsBinder::device(QString *error) const {
     const QDir dir(m_devicesDir);
     for (const QString &name : dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
         const QString path = dir.filePath(name);
-        if (readTrimmed(path + "/idVendor") == "1038" && readTrimmed(path + "/idProduct") == "113a")
+        // The controller is built in ("fixed"): a removable device claiming its id is never
+        // touched, so authorising it cannot get around USBGuard's default policy.
+        if (readTrimmed(path + "/idVendor") == "1038" && readTrimmed(path + "/idProduct") == "113a"
+            && readTrimmed(path + "/removable") == "fixed")
             return path;
     }
     // Device maps this wording (with the USB id) to "keyboard absent", exit status 2.
@@ -27,15 +32,25 @@ QString SysfsBinder::device(QString *error) const {
     return {};
 }
 
+QString SysfsBinder::fileGroup(const QString &path) const {
+    return QFileInfo(path).group();
+}
+
 bool SysfsBinder::writeAuthorized(const QString &path, const QByteArray &value, QString *error) {
     QFile file(path);
-    if (!file.open(QIODevice::WriteOnly) || file.write(value) != value.size()) {
-        *error = file.error() == QFileDevice::PermissionsError || !QFileInfo(path).isWritable()
-                     ? QString("Add your user to the klc-light group (sudo usermod -aG klc-light $USER), then log in again.")
-                     : QString("Cannot write %1: %2").arg(path, file.errorString());
-        return false;
-    }
-    return true;
+    // Unbuffered, so the kernel's answer to write(2) is the one checked here.
+    errno = 0;
+    if (file.open(QIODevice::WriteOnly | QIODevice::Unbuffered) && file.write(value) == value.size())
+        return true;
+    const bool denied = errno == EACCES || errno == EPERM;
+    if (denied && fileGroup(path) == "klc-light")
+        *error = "Add your user to the klc-light group (sudo usermod -aG klc-light $USER), then log in again.";
+    else if (denied)
+        *error = "The klc-light udev rule has not run on the controller yet: restart the computer "
+                 "(or run sudo udevadm trigger --action=add --attr-match=idVendor=1038).";
+    else
+        *error = QString("Cannot write %1: %2").arg(path, file.errorString());
+    return false;
 }
 
 bool SysfsBinder::bind(QString *error) {

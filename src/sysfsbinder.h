@@ -17,6 +17,8 @@ public:
 
 protected:
     virtual bool writeAuthorized(const QString &path, const QByteArray &value, QString *error);
+    // The group owning a file, to tell "not in the group" from "the udev rule has not run".
+    virtual QString fileGroup(const QString &path) const;
 
 private:
     QString device(QString *error) const; // the controller's sysfs directory, empty if absent
