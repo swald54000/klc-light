@@ -118,7 +118,6 @@ public:
     Q_INVOKABLE void setStepDuration(int index, int duration);
     Q_INVOKABLE void addStep();
     Q_INVOKABLE void removeStep(int index);
-    Q_INVOKABLE void setOrigin(const QString &origin);
     Q_INVOKABLE void setReactiveEnabled(bool enabled);
     Q_INVOKABLE void setReactiveDuration(int duration);
     Q_INVOKABLE void setSavedColor(int index, const QColor &color);

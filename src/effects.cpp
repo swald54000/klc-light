@@ -21,23 +21,23 @@ int roundHalfEven(double value) {
 EffectDef baseEffect(const BaseLayer &base) {
     const QColor c = base.color, black = Qt::black;
     if (base.type == "breathing")
-        return {c, {{c, 40}, {black, 80}}, 80, "aqua-0"};
+        return {c, {{c, 40}, {black, 80}}, 80, std::nullopt};
     if (base.type == "flashing")
-        return {c, {{c, 20}, {black, 2}, {black, 20}}, 2, "aqua-0"};
+        return {c, {{c, 20}, {black, 2}, {black, 20}}, 2, std::nullopt};
     if (base.type == "rainbow")
         return {rgb(255, 0, 0),
                 {{rgb(255, 255, 0), 40}, {rgb(0, 255, 0), 40}, {rgb(0, 255, 255), 40},
                  {rgb(0, 0, 255), 40}, {rgb(255, 0, 255), 40}},
-                40, "aqua-1"};
+                40, Wave{"right", "toward", 68}};
     if (base.type == "wave")
         return {base.steps.isEmpty() ? c : base.steps.first().color, base.steps,
-                base.steps.isEmpty() ? 1 : base.steps.first().duration, base.origin};
-    return {c, {}, 0, QString()};
+                base.steps.isEmpty() ? 1 : base.steps.first().duration, base.wave};
+    return {c, {}, 0, std::nullopt};
 }
 
 EffectDef layerEffect(const EffectLayer &layer) {
     const int closing = layer.closing > 0 ? layer.closing : layer.steps.isEmpty() ? 1 : layer.steps.first().duration;
-    return {layer.start, layer.steps, closing, layer.origin};
+    return {layer.start, layer.steps, closing, layer.type == "wave" ? std::optional<Wave>(layer.wave) : std::nullopt};
 }
 
 // Copied from EFFECTS in ~/.local/share/msi-perkeyrgb-setup/msi-kbd-effect, so the themes
@@ -45,20 +45,20 @@ EffectDef layerEffect(const EffectLayer &layer) {
 EffectDef builtinPalette(const QString &name, bool pulse) {
     if (name == "tron") {
         if (pulse)
-            return {rgb(0x00, 0x3C, 0xFF), {{rgb(0x00, 0x3C, 0xFF), 60}, {rgb(0x00, 0xDC, 0xFF), 120}}, 120, "aqua-0"};
+            return {rgb(0x00, 0x3C, 0xFF), {{rgb(0x00, 0x3C, 0xFF), 60}, {rgb(0x00, 0xDC, 0xFF), 120}}, 120, std::nullopt};
         return {rgb(0x00, 0xE5, 0xFF),
                 {{rgb(0x00, 0xE5, 0xFF), 33}, {rgb(0x00, 0x6D, 0xFF), 40}, {rgb(0x0A, 0x27, 0xD3), 50},
                  {rgb(0x82, 0xE9, 0xFF), 40}, {rgb(0x82, 0xE9, 0xFF), 60}},
-                40, "aqua-1"};
+                40, waveFromAqua("aqua-1")};
     }
     if (name == "ares") {
         if (pulse)
-            return {rgb(0x50, 0x00, 0x00), {{rgb(0x50, 0x00, 0x00), 30}, {rgb(0xFF, 0x10, 0x10), 60}}, 60, "aqua-0"};
+            return {rgb(0x50, 0x00, 0x00), {{rgb(0x50, 0x00, 0x00), 30}, {rgb(0xFF, 0x10, 0x10), 60}}, 60, std::nullopt};
         return {rgb(0xFF, 0x00, 0x00),
                 {{rgb(0xFF, 0x00, 0x00), 14}, {rgb(0xC8, 0x00, 0x1E), 16}, {rgb(0x8C, 0x00, 0x00), 18},
                  {rgb(0xFF, 0x2A, 0x00), 12}, {rgb(0xFF, 0x6A, 0x10), 12}, {rgb(0xFF, 0xAA, 0x00), 10},
                  {rgb(0xFF, 0xD0, 0xA0), 6}, {rgb(0xFF, 0xD0, 0xA0), 4}, {rgb(0xFF, 0x00, 0x2A), 12}},
-                14, "aqua-1"};
+                14, waveFromAqua("aqua-1")};
     }
     return {};
 }
@@ -69,7 +69,7 @@ EffectDef scaled(const EffectDef &def, int brightness, int speed) {
                       roundHalfEven(c.blue() * brightness / 100.0));
     };
     auto duration = [speed](int d) { return std::max(1, roundHalfEven(d * 100.0 / speed)); };
-    EffectDef result{color(def.start), {}, duration(def.closing), def.origin};
+    EffectDef result{color(def.start), {}, duration(def.closing), def.wave};
     for (const Step &step : def.steps)
         result.steps.append({color(step.color), duration(step.duration)});
     return result;

@@ -218,14 +218,6 @@ GridLayout {
             }
             RowLayout {
                 Button { text: qsTr("+ Step"); onClicked: backend.addStep() }
-                FlatComboBox {
-                    Layout.fillWidth: true
-                    model: ["aqua-0", "aqua-1", "aqua-2", "aqua-3", "aqua-4", "aqua-5"]
-                    currentIndex: Math.max(0, model.indexOf(panel.cur.origin))
-                    onActivated: backend.setOrigin(currentText)
-                    ToolTip.text: qsTr("Wave origin, from the captured preset")
-                    ToolTip.visible: hovered
-                }
             }
         }
 

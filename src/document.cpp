@@ -31,7 +31,7 @@ Profile lighting(const Document &doc) {
                 profile.keys.insert(id, group.color);
         } else {
             profile.effects.append({group.name, group.behavior, group.keys, group.start, group.steps,
-                                    group.closing, group.origin});
+                                    group.closing, group.wave});
         }
     }
     return profile;
@@ -55,7 +55,7 @@ Document fromLighting(const Profile &profile, const QString &name) {
         group.start = effect.start;
         group.steps = effect.steps;
         group.closing = effect.closing;
-        group.origin = effect.origin;
+        group.wave = effect.wave;
         animated.append(group);
         for (const QString &id : effect.keys)
             animatedKeys.insert(id);
@@ -108,7 +108,7 @@ QJsonObject toJson(const Document &doc) {
     QJsonObject object = toJson(lighting(doc));
     object.remove("keys");
     object.remove("effects");
-    object["version"] = 2;
+    object["version"] = 3;
     object["name"] = doc.name;
 
     QJsonArray groups;
@@ -119,7 +119,8 @@ QJsonObject toJson(const Document &doc) {
             g["color"] = colorName(group.color);
         } else {
             g["steps"] = stepsToJson(group.steps);
-            g["origin"] = group.origin;
+            if (group.behavior == "wave")
+                g["wave"] = waveToJson(group.wave);
             if (group.closing > 0)
                 g["closing"] = group.closing;
             if (group.steps.isEmpty() || group.start != group.steps.first().color)
@@ -142,7 +143,7 @@ std::optional<Document> documentFromJson(const QJsonObject &object, QStringList 
             return std::nullopt;
         return fromLighting(*profile, QString());
     }
-    if (version != 2) {
+    if (version != 2 && version != 3) {
         problems.append(QString("version: %1 is not supported").arg(object.value("version").toVariant().toString()));
         return std::nullopt;
     }
@@ -173,7 +174,7 @@ std::optional<Document> documentFromJson(const QJsonObject &object, QStringList 
                     group.color = *color;
         } else {
             group.steps = stepsFromJson(g.value("steps"), where, &problems);
-            group.origin = g.value("origin").toString();
+            group.wave = waveFromJson(g);
             group.closing = g.value("closing").toInt(0);
             if (g.contains("start")) {
                 if (const auto color = parseColor(g.value("start"), where, &problems))
@@ -205,7 +206,7 @@ QStringList validate(const Document &doc, const Layout &layout) {
             claimed.insert(key);
         }
     }
-    // Unknown keys, steps, origins and the animated-slot limit are the lighting's rules.
+    // Unknown keys, steps, wave origins and the animated-slot limit are the lighting's rules.
     errors += validate(lighting(doc), layout);
     return errors;
 }

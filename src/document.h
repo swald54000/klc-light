@@ -20,7 +20,7 @@ struct Group {
     QColor start;                // pulse, wave (as EffectLayer)
     QList<Step> steps;
     int closing = 0;
-    QString origin;              // "aqua-0".."aqua-5"
+    Wave wave;                   // wave
     bool animated() const { return behavior != "static"; }
 };
 
@@ -37,8 +37,8 @@ struct Document {
 // The version 1 profile that sends this document's lighting.
 Profile lighting(const Document &doc);
 Document fromLighting(const Profile &profile, const QString &name);
-QJsonObject toJson(const Document &doc); // "version": 2
-// Reads version 1 (converted) or 2.
+QJsonObject toJson(const Document &doc); // "version": 3
+// Reads version 1 (converted), 2 or 3.
 std::optional<Document> documentFromJson(const QJsonObject &object, QStringList *errors);
 QStringList validate(const Document &doc, const Layout &layout);
 std::optional<Document> readDocument(const QString &path, QStringList *errors);

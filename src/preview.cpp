@@ -19,14 +19,14 @@ Preview::Preview(const Profile &profile, const Layout &layout) : m_layout(layout
 
     if (profile.base.type != "static") {
         m_baseSlot = 0;
-        const bool wave = profile.base.type == "wave" || profile.base.type == "rainbow";
+        const bool wave = baseEffect(profile.base).wave.has_value();
         m_animated.append({scaled(baseEffect(profile.base), profile.brightness, profile.speed), wave,
                            leftmost(layout.group("all"))});
     }
     for (const EffectLayer &layer : profile.effects) {
         for (const QString &id : layer.keys)
             m_slotOfKey.insert(id, m_animated.size());
-        m_animated.append({scaled(layerEffect(layer), profile.brightness, profile.speed), layer.type == "wave",
+        m_animated.append({scaled(layerEffect(layer), profile.brightness, profile.speed), layerEffect(layer).wave.has_value(),
                            leftmost(layer.keys)});
     }
 }

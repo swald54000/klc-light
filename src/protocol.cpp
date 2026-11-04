@@ -43,11 +43,6 @@ QByteArray aquaEffectPacket(int id) {
     return {};
 }
 
-int originNumber(const QString &origin) {
-    static const QRegularExpression pattern("^aqua-([0-5])$");
-    const auto match = pattern.match(origin);
-    return match.hasMatch() ? match.captured(1).toInt() : -1;
-}
 
 QColor scaledColor(const QColor &color, int brightness) {
     return scaled(EffectDef{color, {}, 1, {}}, brightness, 100).start;
@@ -211,7 +206,8 @@ BuildResult buildPackets(const Profile &profile, const Layout &layout, bool allo
         const EffectDef &def = animated[slot];
         QString error;
         const QList<Transition> table = transitions(def, &error);
-        const QByteArray templatePacket = aquaEffectPacket(originNumber(def.origin));
+        // The captured pulse for in-step cycles, a captured wave for waves.
+        const QByteArray templatePacket = aquaEffectPacket(def.wave ? 3 : 0);
         if (!error.isEmpty() || templatePacket.isEmpty()) {
             const bool base = profile.base.type != "static" && slot == 0;
             const QString name = base ? QString("base") : QString("effect %1").arg(slot + (profile.base.type != "static" ? 0 : 1));
@@ -263,7 +259,7 @@ Profile builtinProfile(const QString &name) {
         layer.start = def.start;
         layer.steps = def.steps;
         layer.closing = def.closing;
-        layer.origin = QString("aqua-%1").arg(slot);
+        layer.wave = waveFromAqua(QString("aqua-%1").arg(slot));
         profile.effects.append(layer);
     }
     return profile;

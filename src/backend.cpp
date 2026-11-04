@@ -213,11 +213,11 @@ QVariantMap Backend::current() const {
     switch (m_kind) {
     case Kind::Base:
         return {{"type", m_doc.base.type}, {"color", m_doc.base.color},
-                {"steps", stepsList(m_doc.base.steps)}, {"origin", m_doc.base.origin}};
+                {"steps", stepsList(m_doc.base.steps)}};
     case Kind::Group: {
         const Group &group = m_doc.groups[m_group];
         return {{"name", group.name}, {"behavior", group.behavior}, {"type", group.behavior},
-                {"color", swatch(group)}, {"steps", stepsList(group.steps)}, {"origin", group.origin},
+                {"color", swatch(group)}, {"steps", stepsList(group.steps)},
                 {"count", int(group.keys.size())}};
     }
     case Kind::Selection:
@@ -400,7 +400,7 @@ QString Backend::setBehavior(const QString &behavior) {
         group.steps = {{group.color, behavior == "pulse" ? 60 : 40}};
         group.start = group.color;
         group.closing = 0;
-        group.origin = behavior == "pulse" ? "aqua-0" : "aqua-1";
+        group.wave = Wave{};
     }
     group.behavior = behavior;
     if (animatedSlots(lighting(next)) > kMaxAnimatedSlots)
@@ -434,7 +434,7 @@ void Backend::setBaseType(const QString &type) {
         d.base.type = type;
         if (type == "wave" && d.base.steps.isEmpty()) {
             d.base.steps = {{QColor("#00E5FF"), 40}, {QColor("#0A27D3"), 40}};
-            d.base.origin = "aqua-1";
+            d.base.wave = Wave{};
         }
         // A black base would make breathing and flashing invisible.
         if (d.base.color == QColor(Qt::black) && type != "static")
@@ -492,15 +492,6 @@ void Backend::removeStep(int index) {
         steps->removeAt(index);
         if (m_kind == Kind::Group)
             d.groups[m_group].start = steps->first().color;
-    });
-}
-
-void Backend::setOrigin(const QString &origin) {
-    edit([&](Document &d) {
-        if (m_kind == Kind::Base)
-            d.base.origin = origin;
-        else if (m_kind == Kind::Group && d.groups[m_group].animated())
-            d.groups[m_group].origin = origin;
     });
 }
 

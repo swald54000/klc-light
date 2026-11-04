@@ -1,5 +1,6 @@
 #include "profile.h"
 
+#include <QHash>
 #include <QJsonArray>
 #include <QRegularExpression>
 #include <QSet>
@@ -58,11 +59,61 @@ int animatedSlots(const Profile &profile) {
     return profile.effects.size() + (profile.base.type == "static" ? 0 : 1);
 }
 
+Wave waveFromAqua(const QString &origin) {
+    if (origin == "aqua-1" || origin == "aqua-4")
+        return {"right", "toward", 68};
+    if (origin == "aqua-3")
+        return {"left", "toward", 68};
+    return {"center", "toward", 68};
+}
+
+Wave normalized(const Wave &wave) {
+    static const QHash<QString, QString> opposite{{"left", "right"}, {"right", "left"}, {"top", "bottom"}, {"bottom", "top"}};
+    if (wave.flow != "away" || !opposite.contains(wave.origin))
+        return wave;
+    return {opposite.value(wave.origin), "toward", wave.size};
+}
+
+QJsonObject waveToJson(const Wave &wave) {
+    return {{"origin", wave.origin}, {"flow", wave.flow}, {"size", wave.size}};
+}
+
+Wave waveFromJson(const QJsonObject &holder) {
+    if (holder.value("wave").isObject()) {
+        const QJsonObject object = holder.value("wave").toObject();
+        const Wave defaults;
+        return normalized({object.value("origin").toString(defaults.origin), object.value("flow").toString(defaults.flow),
+                           object.value("size").toInt(defaults.size)});
+    }
+    if (holder.contains("origin"))
+        return waveFromAqua(holder.value("origin").toString());
+    return {};
+}
+
+QStringList validateWave(const Wave &wave, const QString &where, const Layout &layout) {
+    static const QStringList points{"left", "right", "top", "bottom", "center"};
+    QStringList errors;
+    if (!points.contains(wave.origin)) {
+        const Key *key = layout.byId(wave.origin);
+        if (wave.origin.startsWith("KEY_") || wave.origin.startsWith("HID_")) {
+            if (!key || !key->visible)
+                errors.append(QString("%1: wave origin: unknown key \"%2\"").arg(where, wave.origin));
+        } else {
+            errors.append(QString("%1: wave origin: unknown \"%2\"").arg(where, wave.origin));
+        }
+    }
+    if (wave.flow != "toward" && wave.flow != "away")
+        errors.append(QString("%1: wave flow: \"%2\" is not toward or away").arg(where, wave.flow));
+    if (wave.size < 1 || wave.size > 100)
+        errors.append(QString("%1: wave size: %2 out of range 1..100").arg(where).arg(wave.size));
+    return errors;
+}
+
 QJsonObject toJson(const Profile &profile) {
     QJsonObject base{{"type", profile.base.type}};
     if (profile.base.type == "wave") {
         base["steps"] = stepsToJson(profile.base.steps);
-        base["origin"] = profile.base.origin;
+        base["wave"] = waveToJson(profile.base.wave);
     } else if (profile.base.type != "rainbow") {
         base["color"] = colorName(profile.base.color);
     }
@@ -75,7 +126,9 @@ QJsonObject toJson(const Profile &profile) {
     for (const EffectLayer &effect : profile.effects) {
         QJsonObject object{{"name", effect.name}, {"type", effect.type},
                            {"keys", QJsonArray::fromStringList(effect.keys)},
-                           {"steps", stepsToJson(effect.steps)}, {"origin", effect.origin}};
+                           {"steps", stepsToJson(effect.steps)}};
+        if (effect.type == "wave")
+            object["wave"] = waveToJson(effect.wave);
         if (effect.closing > 0)
             object["closing"] = effect.closing;
         if (effect.steps.isEmpty() || effect.start != effect.steps.first().color)
@@ -121,7 +174,7 @@ std::optional<Profile> profileFromJson(const QJsonObject &object, QStringList *e
                 profile.base.color = *color;
         if (profile.base.type == "wave") {
             profile.base.steps = stepsFromJson(base.value("steps"), "base", &problems);
-            profile.base.origin = base.value("origin").toString();
+            profile.base.wave = waveFromJson(base);
         }
     }
 
@@ -140,7 +193,7 @@ std::optional<Profile> profileFromJson(const QJsonObject &object, QStringList *e
         for (const QJsonValue &key : e.value("keys").toArray())
             effect.keys.append(key.toString());
         effect.steps = stepsFromJson(e.value("steps"), where, &problems);
-        effect.origin = e.value("origin").toString();
+        effect.wave = waveFromJson(e);
         effect.closing = e.value("closing").toInt(0);
         if (e.contains("start")) {
             if (const auto color = parseColor(e.value("start"), where, &problems))
@@ -165,7 +218,6 @@ std::optional<Profile> profileFromJson(const QJsonObject &object, QStringList *e
 
 QStringList validate(const Profile &profile, const Layout &layout) {
     QStringList errors;
-    static const QRegularExpression origin("^aqua-[0-5]$");
     auto checkSteps = [&](const QList<Step> &steps, const QString &where) {
         if (steps.isEmpty())
             errors.append(QString("%1: needs at least one step").arg(where));
@@ -188,8 +240,7 @@ QStringList validate(const Profile &profile, const Layout &layout) {
         errors.append(QString("base: unknown type \"%1\"").arg(profile.base.type));
     if (profile.base.type == "wave") {
         checkSteps(profile.base.steps, "base");
-        if (!origin.match(profile.base.origin).hasMatch())
-            errors.append(QString("base: unknown origin \"%1\"").arg(profile.base.origin));
+        errors += validateWave(profile.base.wave, "base", layout);
     }
 
     for (auto it = profile.keys.begin(); it != profile.keys.end(); ++it)
@@ -202,8 +253,8 @@ QStringList validate(const Profile &profile, const Layout &layout) {
         const QString where = QString("effect %1").arg(effect.name.isEmpty() ? QString::number(i + 1) : effect.name);
         if (!kEffectTypes.contains(effect.type))
             errors.append(QString("%1: unknown type \"%2\"").arg(where, effect.type));
-        if (!origin.match(effect.origin).hasMatch())
-            errors.append(QString("%1: unknown origin \"%2\"").arg(where, effect.origin));
+        if (effect.type == "wave")
+            errors += validateWave(effect.wave, where, layout);
         checkSteps(effect.steps, where);
         for (const QString &key : effect.keys) {
             if (!layout.byId(key))

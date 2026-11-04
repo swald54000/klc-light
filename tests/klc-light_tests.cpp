@@ -278,7 +278,8 @@ private slots:
           "keys": { "KEY_W": "#FF0000", "KEY_A": "#FF0000" },
           "effects": [
             { "name": "vague", "type": "wave", "keys": ["KEY_F1", "KEY_F2"],
-              "steps": [["#FF0000", 14], ["#FFAA00", 10]], "origin": "aqua-1" }
+              "steps": [["#FF0000", 14], ["#FFAA00", 10]],
+              "wave": { "origin": "right", "flow": "toward", "size": 68 } }
           ],
           "reactive": { "enabled": false, "color": "#FFFFFF", "duration": 30 }
         })";
@@ -363,7 +364,7 @@ private slots:
         const EffectDef def{QColor(255, 0, 0),
                             {{QColor(255, 255, 0), 51}, {QColor(0, 255, 0), 51}, {QColor(0, 255, 255), 51},
                              {QColor(0, 0, 255), 51}, {QColor(255, 0, 255), 51}},
-                            45, "aqua-0"};
+                            45, std::nullopt};
         QString error;
         QCOMPARE(transitions(def, &error), table(pulse));
         QVERIFY2(error.isEmpty(), qPrintable(error));
@@ -372,7 +373,7 @@ private slots:
     // The user's Tron wave at speed 235: its red step lasts 17 units, far from 32.
     void effectsReachesStepColors()
     {
-        const EffectDef def{QColor("#DFA100"), {{QColor("#DFA100"), 23}, {QColor("#FF000D"), 17}}, 23, "aqua-1"};
+        const EffectDef def{QColor("#DFA100"), {{QColor("#DFA100"), 23}, {QColor("#FF000D"), 17}}, 23, std::nullopt};
         QString error;
         const QList<Transition> list = transitions(def, &error);
         QVERIFY2(error.isEmpty(), qPrintable(error));
@@ -386,7 +387,7 @@ private slots:
     // shorter step is lengthened rather than left short.
     void effectsStretchesTooFastSteps()
     {
-        const EffectDef def{QColor("#FFFFFF"), {{QColor("#FFFFFF"), 20}, {QColor("#000000"), 2}}, 2, "aqua-0"};
+        const EffectDef def{QColor("#FFFFFF"), {{QColor("#FFFFFF"), 20}, {QColor("#000000"), 2}}, 2, std::nullopt};
         QString error;
         const QList<Transition> list = transitions(def, &error);
         QVERIFY2(error.isEmpty(), qPrintable(error));
@@ -399,7 +400,7 @@ private slots:
     // The controller wraps a channel that leaves 0..255, so no step may overshoot.
     void effectsNeverWraps()
     {
-        const EffectDef def{QColor("#010101"), {{QColor("#FE00FF"), 10}, {QColor("#030303"), 10}}, 10, "aqua-1"};
+        const EffectDef def{QColor("#010101"), {{QColor("#FE00FF"), 10}, {QColor("#030303"), 10}}, 10, std::nullopt};
         QString error;
         const QList<Transition> list = transitions(def, &error);
         QVERIFY2(error.isEmpty(), qPrintable(error));
@@ -409,7 +410,7 @@ private slots:
 
     void effectsScaled()
     {
-        const EffectDef def{QColor("#FF0000"), {{QColor("#FF0000"), 40}, {QColor("#000000"), 1}}, 40, "aqua-0"};
+        const EffectDef def{QColor("#FF0000"), {{QColor("#FF0000"), 40}, {QColor("#000000"), 1}}, 40, std::nullopt};
         QCOMPARE(scaled(def, 50, 100).start, QColor("#800000"));
         QCOMPARE(scaled(def, 100, 200).steps.first().duration, 20);
         QCOMPARE(scaled(def, 100, 200).closing, 20);
@@ -418,7 +419,7 @@ private slots:
 
     void effectsTooMany()
     {
-        EffectDef def{Qt::red, {}, 10, "aqua-1"};
+        EffectDef def{Qt::red, {}, 10, std::nullopt};
         for (int i = 0; i < 17; ++i)
             def.steps.append({i % 2 ? Qt::black : Qt::red, 10});
         QString error;
@@ -432,11 +433,135 @@ private slots:
         base.type = "breathing";
         base.color = QColor("#00E5FF");
         const EffectDef breathing = baseEffect(base);
-        QCOMPARE(breathing.origin, QString("aqua-0"));
+        QVERIFY(!breathing.wave);
         QCOMPARE(breathing.steps.size(), 2);
         base.type = "rainbow";
         QCOMPARE(baseEffect(base).steps.size(), 5);
-        QCOMPARE(baseEffect(base).origin, QString("aqua-1"));
+        QVERIFY(baseEffect(base).wave == Wave({"right", "toward", 68}));
+    }
+
+    void profileWaveFromAqua_data()
+    {
+        QTest::addColumn<QString>("aqua");
+        QTest::addColumn<QString>("origin");
+        QTest::newRow("0") << "aqua-0" << "center";
+        QTest::newRow("1") << "aqua-1" << "right";
+        QTest::newRow("2") << "aqua-2" << "center";
+        QTest::newRow("3") << "aqua-3" << "left";
+        QTest::newRow("4") << "aqua-4" << "right";
+        QTest::newRow("5") << "aqua-5" << "center";
+    }
+
+    void profileWaveFromAqua()
+    {
+        QFETCH(QString, aqua);
+        QFETCH(QString, origin);
+        QVERIFY(waveFromAqua(aqua) == Wave({origin, "toward", 68}));
+    }
+
+    void profileWaveNormalized()
+    {
+        QVERIFY(normalized({"left", "away", 40}) == Wave({"right", "toward", 40}));
+        QVERIFY(normalized({"top", "away", 40}) == Wave({"bottom", "toward", 40}));
+        QVERIFY(normalized({"center", "away", 40}) == Wave({"center", "away", 40}));
+        QVERIFY(normalized({"KEY_G", "away", 40}) == Wave({"KEY_G", "away", 40}));
+    }
+
+    void documentV3RoundTrip()
+    {
+        Document doc;
+        doc.name = "Waves";
+        doc.base.type = "wave";
+        doc.base.steps = {{QColor("#00E5FF"), 40}, {QColor("#0A27D3"), 40}};
+        doc.base.wave = {"KEY_G", "away", 40};
+        Group group;
+        group.name = "Top";
+        group.behavior = "wave";
+        group.keys = {"KEY_F1"};
+        group.start = QColor("#FF0000");
+        group.steps = {{QColor("#FF0000"), 30}};
+        group.wave = {"top", "toward", 1};
+        doc.groups = {group};
+        const QJsonObject json = toJson(doc);
+        QCOMPARE(json.value("version").toInt(), 3);
+        QVERIFY(!QJsonDocument(json).toJson().contains("\"origin\": \"aqua"));
+        QCOMPARE(json.value("base").toObject().value("wave").toObject().value("origin").toString(), QString("KEY_G"));
+        QCOMPARE(json.value("groups").toArray().at(0).toObject().value("wave").toObject().value("size").toInt(), 1);
+        QStringList errors;
+        const auto back = documentFromJson(json, &errors);
+        QVERIFY2(back, qPrintable(errors.join("; ")));
+        QVERIFY(back->base.wave == doc.base.wave);
+        QVERIFY(back->groups.at(0).wave == group.wave);
+        QVERIFY(validate(*back, Layout::gs76()).isEmpty());
+    }
+
+    void documentV2AquaConverted()
+    {
+        const QByteArray json = R"({
+          "version": 2, "name": "Old", "brightness": 100, "speed": 100,
+          "base": { "type": "static", "color": "#000000" },
+          "groups": [ { "name": "g", "behavior": "wave", "keys": ["KEY_F1"],
+                        "steps": [["#FF0000", 30]], "origin": "aqua-3" } ],
+          "reactive": { "enabled": false, "color": "#FFFFFF", "duration": 30 }
+        })";
+        QStringList errors;
+        const auto doc = documentFromJson(QJsonDocument::fromJson(json).object(), &errors);
+        QVERIFY2(doc, qPrintable(errors.join("; ")));
+        QVERIFY(doc->groups.at(0).wave == Wave({"left", "toward", 68}));
+    }
+
+    // Omarchy's theme hook must still light a theme written before waves had directions.
+    void profileV1AquaOriginStillApplies()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        QDir().mkpath(paths.userThemes + "/tron");
+        const QByteArray theme = R"({
+          "version": 1, "brightness": 100, "speed": 100,
+          "base": { "type": "wave", "steps": [["#DFA100", 55], ["#FF000D", 40]], "origin": "aqua-3" },
+          "reactive": { "enabled": false, "color": "#FFFFFF", "duration": 30 }
+        })";
+        write(paths.userThemes + "/tron/keyboard.klc.json", theme);
+        CliRun run(dir, paths);
+        QCOMPARE(run.exec({"apply", "--theme"}), 0);
+        QCOMPARE(run.log.events.count("send"), 7);
+    }
+
+    void profileWaveErrors_data()
+    {
+        QTest::addColumn<QString>("origin");
+        QTest::addColumn<QString>("flow");
+        QTest::addColumn<int>("size");
+        QTest::addColumn<QString>("expected");
+        QTest::newRow("unknown key") << "KEY_NOPE" << "toward" << 68 << "wave origin: unknown key \"KEY_NOPE\"";
+        QTest::newRow("unknown name") << "diagonal" << "toward" << 68 << "wave origin: unknown \"diagonal\"";
+        QTest::newRow("flow") << "left" << "sideways" << 68 << "wave flow";
+        QTest::newRow("size 0") << "left" << "toward" << 0 << "wave size";
+        QTest::newRow("size 101") << "left" << "toward" << 101 << "wave size";
+    }
+
+    void profileWaveErrors()
+    {
+        QFETCH(QString, origin);
+        QFETCH(QString, flow);
+        QFETCH(int, size);
+        QFETCH(QString, expected);
+        Profile profile;
+        profile.base.type = "wave";
+        profile.base.steps = {{QColor("#00E5FF"), 40}};
+        profile.base.wave = {origin, flow, size};
+        const QStringList errors = validate(profile, Layout::gs76());
+        QVERIFY2(errors.join("\n").contains(expected), qPrintable(errors.join("\n")));
+    }
+
+    void profileWaveOriginHiddenKeyRejected()
+    {
+        Profile profile;
+        profile.base.type = "wave";
+        profile.base.steps = {{QColor("#00E5FF"), 40}};
+        profile.base.wave = {"HID_135", "toward", 68};
+        QVERIFY(Layout::gs76().byId("HID_135") && !Layout::gs76().byId("HID_135")->visible);
+        QVERIFY(validate(profile, Layout::gs76()).join("\n").contains("wave origin: unknown key \"HID_135\""));
     }
 
     void documentRoundTrip()
@@ -457,18 +582,18 @@ private slots:
         pulse.start = QColor("#000000");
         pulse.steps = {{QColor("#FF0000"), 100}, {QColor("#00FF00"), 200}};
         pulse.closing = 50;
-        pulse.origin = "aqua-0";
+        pulse.wave = waveFromAqua("aqua-0");
         Group wave;
         wave.name = "Wave";
         wave.behavior = "wave";
         wave.keys = {"KEY_Q"};
         wave.steps = {{QColor("#0000FF"), 300}};
         wave.start = wave.steps.first().color;
-        wave.origin = "aqua-2";
+        wave.wave = waveFromAqua("aqua-2");
         d.groups = {stat, pulse, wave};
 
         const QJsonObject json = toJson(d);
-        QCOMPARE(json["version"].toInt(), 2);
+        QCOMPARE(json["version"].toInt(), 3);
         QCOMPARE(json["name"].toString(), d.name);
         QStringList errors;
         const auto back = documentFromJson(json, &errors);
@@ -486,7 +611,8 @@ private slots:
             QCOMPARE(b.behavior, a.behavior);
             QCOMPARE(b.keys, a.keys);
             QCOMPARE(b.closing, a.closing);
-            QCOMPARE(b.origin, a.origin);
+            if (a.behavior == "wave")
+                QVERIFY(b.wave == a.wave);
             QCOMPARE(b.steps.size(), a.steps.size());
             if (a.animated())
                 QCOMPARE(b.start, a.start);
@@ -509,7 +635,7 @@ private slots:
         e.start = QColor("#112233");
         e.steps = {{QColor("#445566"), 77}};
         e.closing = 9;
-        e.origin = "aqua-3";
+        e.wave = waveFromAqua("aqua-3");
         p.effects = {e};
         const Document d = fromLighting(p, "X");
         QCOMPARE(d.name, QString("X"));
@@ -528,7 +654,7 @@ private slots:
         QCOMPARE(pulse.steps.size(), 1);
         QCOMPARE(pulse.steps[0].duration, 77);
         QCOMPARE(pulse.closing, 9);
-        QCOMPARE(pulse.origin, QString("aqua-3"));
+        QVERIFY(pulse.wave == waveFromAqua("aqua-3"));
         QCOMPARE(d.groupOf("KEY_F1"), 2);
         QCOMPARE(d.groupOf("KEY_Z"), -1);
     }
@@ -543,7 +669,7 @@ private slots:
             e.keys = {key};
             e.start = QColor("#000000");
             e.steps = {{QColor("#FFFFFF"), 10}};
-            e.origin = "aqua-0";
+            e.wave = waveFromAqua("aqua-0");
             return e;
         };
         p.effects = {effect("Pulse 2", "KEY_F1"), effect("Pulse 2", "KEY_F2"), effect("", "KEY_F3")};
@@ -578,7 +704,7 @@ private slots:
         e.keys = {"KEY_F1"};
         e.start = QColor("#000000");
         e.steps = {{QColor("#FFFFFF"), 10}};
-        e.origin = "aqua-0";
+        e.wave = waveFromAqua("aqua-0");
         p.effects = {e};
         const Document d = fromLighting(p, "X");
         QCOMPARE(d.groups.size(), 2);
@@ -643,7 +769,7 @@ private slots:
             g.keys = keys;
             g.start = QColor("#000000");
             g.steps = {{QColor("#FFFFFF"), 10}};
-            g.origin = "aqua-0";
+            g.wave = waveFromAqua("aqua-0");
             return g;
         };
         Document d;
@@ -780,7 +906,7 @@ private slots:
         Profile profile;
         profile.base.type = "wave";
         profile.base.steps = {{QColor("#00E5FF"), 40}, {QColor("#0A27D3"), 40}};
-        profile.base.origin = "aqua-1";
+        profile.base.wave = waveFromAqua("aqua-1");
         const BuildResult result = buildPackets(profile, Layout::gs76());
         QVERIFY2(result.errors.isEmpty(), qPrintable(result.errors.join("; ")));
         const QByteArray element = powerPacket(result).mid(4 + 11 * 12, 12);
@@ -1436,7 +1562,7 @@ private slots:
         pulse.start = QColor("#500000");
         pulse.steps = {{QColor("#FF1010"), 60}};
         pulse.closing = 60;
-        pulse.origin = "aqua-0";
+        pulse.wave = waveFromAqua("aqua-0");
         profile.effects = {pulse};
         const Preview preview(profile, Layout::gs76());
         QCOMPARE(preview.colorAt("KEY_Q", 0), QColor("#500000"));
@@ -1455,7 +1581,7 @@ private slots:
         wave.keys = {"KEY_Q", "KEY_P"};
         wave.start = Qt::black;
         wave.steps = {{Qt::white, 50}};
-        wave.origin = "aqua-1";
+        wave.wave = waveFromAqua("aqua-1");
         profile.effects = {wave};
         const Preview preview(profile, layout);
         const qint64 delay = qint64((layout.byId("KEY_P")->x - layout.byId("KEY_Q")->x) * Preview::WaveMsPerUnit);
@@ -1657,8 +1783,6 @@ private slots:
         QCOMPARE(run.backend->document().groups[0].steps[1].duration, 77);
         run.backend->removeStep(0);
         QCOMPARE(run.backend->document().groups[0].start, run.backend->document().groups[0].steps.first().color);
-        run.backend->setOrigin("aqua-3");
-        QCOMPARE(run.backend->current()["origin"].toString(), QString("aqua-3"));
         run.backend->deleteGroup(0);
         QVERIFY(run.backend->document().groups.isEmpty());
         QCOMPARE(run.backend->currentKind(), QString("base"));
@@ -2127,7 +2251,7 @@ private slots:
 
     void effectsTotalDurationFits()
     {
-        const EffectDef def{Qt::red, {{Qt::black, 40000}}, 40000, "aqua-1"};
+        const EffectDef def{Qt::red, {{Qt::black, 40000}}, 40000, std::nullopt};
         QString error;
         transitions(def, &error);
         QVERIFY2(error.contains("65535"), qPrintable(error));
@@ -3451,10 +3575,13 @@ private:
             QCOMPARE(QChar(result.packets[i].kind == Packet::Feature ? 'F' : 'O'), expected[i].first);
             const QByteArray got = result.packets[i].data;
             QByteArray want = expected[i].second;
-            // An effect packet's transition table (0x02..0x81) and total duration (0x98..0x99).
+            // An effect packet's transition table (0x02..0x81), wave fields (0x8C..0x95, 0x9A)
+            // and total duration (0x98..0x99).
             if (mode == SkipTransitions && quint8(want.at(0)) == 0x0b && got.size() == want.size()) {
                 want.replace(0x02, 0x80, got.mid(0x02, 0x80));
+                want.replace(0x8c, 0x0a, got.mid(0x8c, 0x0a));
                 want.replace(0x98, 2, got.mid(0x98, 2));
+                want[0x9a] = got[0x9a];
             }
             // Key packets: msi-perkeyrgb leaves a code-0 filler element and counts 11 keys
             // where we send the power key as a twelfth. Compare the header, every real key

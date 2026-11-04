@@ -3,6 +3,7 @@
 #include <QColor>
 #include <QList>
 #include <QString>
+#include <optional>
 
 #include "profile.h"
 
@@ -17,12 +18,12 @@ struct Transition {
 };
 
 // A color cycle: start color, then fade to each step's color, then back to the start
-// over `closing` time units.
+// over `closing` time units. Without a wave every linked key runs it in step (a pulse).
 struct EffectDef {
     QColor start;
     QList<Step> steps;
     int closing = 0;
-    QString origin;
+    std::optional<Wave> wave;
 };
 
 EffectDef baseEffect(const BaseLayer &base);
