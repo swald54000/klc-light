@@ -2,7 +2,7 @@
 
 Date : 2026-11-04
 Statut : conception validée en discussion, en attente de relecture
-Branche : `v1`
+Branche : `main` (ex-`v1`)
 Spec précédente : `2026-11-04-klc-light-plugin-omarchy-design.md`
 
 ## 1. Objectif
@@ -84,7 +84,7 @@ distributions.
 ## 4. GitHub
 
 - `swald54000/klc-light` : le dépôt actuel, historique conservé, branche par défaut `v1`
-  renommée `main` à l'envoi, tag `v0.5.0` et release.
+  renommée `main` (fait en local le 2026-11-04), tag `v0.5.0` et release.
 - `swald54000/omarchy-klc-light` : le contenu de `omarchy-plugin/swald.klc-light` à la
   racine, plus un README court et la licence. `tools/publish_plugin.sh <dossier du dépôt
   du plugin>` y recopie le dossier (sans `git` ni lien) pour chaque version.
