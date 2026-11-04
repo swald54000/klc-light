@@ -1,5 +1,6 @@
 #include "cli.h"
 
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 
@@ -32,9 +33,37 @@ int finish(CliEnv &env, bool json, bool ok, const QString &message, int packets 
 
 } // namespace
 
+// `klc-light list [--json]`: the library, the applied profile and the active theme, for the
+// Omarchy bar widget and scripts. Sends nothing.
+int runList(const QStringList &args, CliEnv &env) {
+    const bool json = args.contains("--json");
+    Library lib(env.libraryDir);
+    lib.migrate(env.paths);
+    QString currentTheme;
+    QFile name(env.paths.themeName);
+    if (name.open(QIODevice::ReadOnly))
+        currentTheme = QString::fromUtf8(name.readAll()).trimmed();
+    QJsonArray profiles;
+    for (const LibraryEntry &entry : lib.entries())
+        profiles.append(QJsonObject{{"name", entry.name}, {"theme", lib.themeOf(entry.name)}, {"unreadable", !entry.readable}});
+    if (json) {
+        const QJsonObject out{{"applied", lib.applied()}, {"off", lib.off()}, {"currentTheme", currentTheme}, {"profiles", profiles}};
+        *env.out << QJsonDocument(out).toJson(QJsonDocument::Compact) << "\n";
+    } else {
+        for (const QJsonValue &p : profiles) {
+            const QString n = p.toObject().value("name").toString();
+            *env.out << (n == lib.applied() ? "* " : "  ") << n << "\n";
+        }
+    }
+    return 0;
+}
+
 int runCli(const QStringList &args, CliEnv &env) {
+    if (args.value(0) == "list")
+        return runList(args.mid(1), env);
     if (args.value(0) != "apply") {
-        *env.err << "usage: klc-light [open] | klc-light apply [<name> | <file.json>] [--theme] [--check] [--json]\n";
+        *env.err << "usage: klc-light [open] | klc-light apply [<name> | <file.json>] [--theme] [--check] [--json]\n"
+                    "       klc-light list [--json] | klc-light off [--check] [--json]\n";
         return 1;
     }
     bool check = false, json = false;

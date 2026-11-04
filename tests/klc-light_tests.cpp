@@ -1531,6 +1531,83 @@ private slots:
         }
     }
 
+    void libraryOffState()
+    {
+        QTemporaryDir dir;
+        {
+            Library lib(dir.path() + "/klc");
+            QVERIFY(!lib.off());
+            lib.setOff(true);
+            lib.setApplied("X");
+        }
+        Library again(dir.path() + "/klc");
+        QVERIFY(again.off());
+        QCOMPARE(again.applied(), QString("X"));
+        write(dir.path() + "/klc/state.json", R"({"applied": "Y", "themes": {}})");
+        QVERIFY(!Library(dir.path() + "/klc").off());
+    }
+
+    void cliList()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        addProfile(dir, QString::fromUtf8("Été \"chaud\""), "#FF8800");
+        write(dir.path() + "/klc/profiles/broken.klc.json", "{ not json");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        CliRun run(dir, paths);
+        QCOMPARE(run.exec({"list", "--json"}), 0);
+        const QJsonObject out = QJsonDocument::fromJson(run.out.toUtf8()).object();
+        QCOMPARE(out.value("applied").toString(), QString("Tron"));
+        QCOMPARE(out.value("off").toBool(true), false);
+        QCOMPARE(out.value("currentTheme").toString(), QString("tron"));
+        const QJsonArray profiles = out.value("profiles").toArray();
+        QCOMPARE(profiles.size(), 3);
+        // Sorted as the editor lists them.
+        QStringList names, expected;
+        QHash<QString, QJsonObject> byName;
+        for (const QJsonValue &p : profiles) {
+            names << p.toObject().value("name").toString();
+            byName.insert(names.last(), p.toObject());
+        }
+        for (const LibraryEntry &entry : Library(dir.path() + "/klc").entries())
+            expected << entry.name;
+        QCOMPARE(names, expected);
+        QVERIFY(names.contains(QString::fromUtf8("Été \"chaud\"")));
+        QCOMPARE(byName.value("Tron").value("theme").toString(), QString("tron"));
+        QCOMPARE(byName.value("Tron").value("unreadable").toBool(true), false);
+        QCOMPARE(byName.value("broken").value("unreadable").toBool(), true);
+        QCOMPARE(byName.value(QString::fromUtf8("Été \"chaud\"")).value("theme").toString(), QString());
+
+        CliRun text(dir, paths);
+        QCOMPARE(text.exec({"list"}), 0);
+        QVERIFY2(text.out.contains("* Tron\n"), qPrintable(text.out));
+        QVERIFY2(text.out.contains("  broken\n"), qPrintable(text.out));
+    }
+
+    void cliListMigratesFirstRun()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        QDir().mkpath(paths.userThemes + "/tron");
+        write(paths.userThemes + "/tron/keyboard.effect", "tron\n");
+        CliRun run(dir, paths);
+        QCOMPARE(run.exec({"list", "--json"}), 0);
+        const QJsonArray profiles = QJsonDocument::fromJson(run.out.toUtf8()).object().value("profiles").toArray();
+        QCOMPARE(profiles.size(), 1);
+        QCOMPARE(profiles.at(0).toObject().value("name").toString(), QString("Tron"));
+        QCOMPARE(profiles.at(0).toObject().value("theme").toString(), QString("tron"));
+    }
+
+    void cliListSendsNothing()
+    {
+        QTemporaryDir dir;
+        addProfile(dir, "Tron", "#00F2FF");
+        CliRun run(dir, fakeTheme(dir, "tron"));
+        QCOMPARE(run.exec({"list"}), 0);
+        QVERIFY(run.log.events.isEmpty());
+    }
+
     void cliNothing()
     {
         QTemporaryDir dir;

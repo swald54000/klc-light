@@ -31,6 +31,9 @@ public:
 
     QString applied() const { return m_applied; }
     void setApplied(const QString &name);
+    // True after `klc-light off` until the next successful send; `applied` is kept.
+    bool off() const { return m_off; }
+    void setOff(bool off);
     QString profileForTheme(const QString &theme) const { return m_themes.value(theme); }
     QString themeOf(const QString &profile) const;
     // Links the profile to the theme (empty theme unlinks); returns the profile the theme was
@@ -56,4 +59,5 @@ private:
     QString m_dir;
     QString m_applied;
     QMap<QString, QString> m_themes; // theme -> profile
+    bool m_off = false;
 };

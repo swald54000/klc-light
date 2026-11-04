@@ -43,9 +43,17 @@ Library::Library(QString dir) : m_dir(std::move(dir)) {
     }
     const QJsonObject state = document.object(), themes = state.value("themes").toObject();
     m_applied = state.value("applied").toString();
+    m_off = state.value("off").toBool(false);
     for (auto it = themes.begin(); it != themes.end(); ++it)
         if (it.value().isString() && !it.value().toString().isEmpty())
             m_themes.insert(it.key(), it.value().toString());
+}
+
+void Library::setOff(bool off) {
+    if (off == m_off)
+        return;
+    m_off = off;
+    writeState();
 }
 
 void Library::copyAside(const QString &path, const QByteArray &bytes) {
@@ -61,7 +69,7 @@ void Library::writeState() {
     QDir().mkpath(m_dir);
     QSaveFile file(m_dir + "/state.json");
     if (!file.open(QIODevice::WriteOnly) ||
-        file.write(QJsonDocument(QJsonObject{{"applied", m_applied}, {"themes", themes}}).toJson(QJsonDocument::Indented)) < 0 ||
+        file.write(QJsonDocument(QJsonObject{{"applied", m_applied}, {"off", m_off}, {"themes", themes}}).toJson(QJsonDocument::Indented)) < 0 ||
         !file.commit())
         qWarning("klc-light: cannot write %s: %s", qPrintable(m_dir + "/state.json"), qPrintable(file.errorString()));
 }
