@@ -32,3 +32,67 @@ Proposed mapping against `lighting_effect` in SteelSeries GG's `common_lighting.
 To verify (with the user, one send): copy effect 3, set 0x8C to the value of effect 4
 (4294) and check the wave now starts from the right side. Until then, origins stay
 limited to `aqua-0` … `aqua-5`.
+
+## Cross-check with Keyglow (2026-11-04)
+
+Keyglow 0.1.0 (github.com/beylerburak/keyglow, GPL-3.0, tested on a Monster Semruk
+`1038:113a`) builds effect packets from scratch instead of patching `aqua`. r-rgb
+(github.com/MikhaelCat/r-rgb) carries a line-for-line Rust port of the same
+`protocol.py`, so the two count as one source. Read for protocol facts only; no code is
+copied (GPL).
+
+Its field map for 0x8A–0x9A, against the table above:
+
+| bytes | Keyglow | our guess | agrees |
+|---|---|---|---|
+| 0x8A | always 0xFF | brightness or level | — |
+| 0x8C (u16) | wave origin x, 0..0x105C | `focal_x` | yes |
+| 0x8E (u16) | wave origin y, 0..0x040D | `focal_y` | yes |
+| 0x90 (u16) | propagate along x | wave on | partly |
+| 0x92 (u16) | propagate along y | breathing | **no** |
+| 0x94 (u16) | wavelength, 0x1F..0x3E9 | `scale` | yes |
+| 0x9A | inward (wave runs toward the origin) | `direction_inverted` | yes |
+
+Read this way, `aqua-0` is not a breathing effect but a wave running down from the top
+edge (x ignored, along y only), and its directions map as Keyglow's: right = x 0 along
+x, left = x max along x, down = y 0 along y, up = y max along y, out = centre along both,
+in = centre along both + inward. Keyglow also uses up to 9 effect slots (8 for its
+Starlight effect); we stop at the 6 seen in `aqua`.
+
+### Transition slopes: our model did not fit the capture — CONFIRMED, fixed
+
+Keyglow reads each transition's signed bytes as a per-time-unit slope in 1/16 color
+level: a transition changes a channel by `slope * duration / 16`. We (after
+`msi-kbd-effect`) read them as a total change of `2 * slope` levels, whatever the
+duration. `tools/decode_slopes.py` replays the captured cycles under both models:
+
+- `aqua-0`: slopes ±80 over 51 units. Keyglow's model walks the hue wheel exactly
+  (red, yellow, green, cyan, blue, magenta, red: each step 80·51/16 = 255 levels). Ours
+  gives (255,160,0), (95,160,0)… and ends at blue −20, outside 0..255.
+- `aqua-1` and `aqua-2` leave a cycle error of 20–42 levels under ours, under 4 under
+  Keyglow's.
+- The two models agree only when a transition lasts 32 units. Most `aqua` steps last
+  33, which is why patching `aqua`'s colors looked right.
+
+Consequence if Keyglow is right: any of our steps far from 32 units (Tron's 55 and 40,
+any speed other than 100 %) overshoots or falls short by `duration / 32`, and the
+controller wraps the channel instead of clamping it. The preview interpolates the
+intended colors, so it would not show the difference. Keyglow's time unit (10 ms,
+"verified on hardware") matches our `Preview::UnitMs`. It counts the reactive duration
+in milliseconds, which would make our default of 30 a 30 ms flash, too short to see.
+
+Confirmed on the GS76 on 2026-11-04: with Tron applied, the keys stayed orange where the
+preview turned red, as Keyglow's model predicts (#F04C06 instead of #FF000D). `transitions()`
+now encodes per-unit slopes: 8.4 fixed point, rounded toward zero so no step overshoots,
+and a step too short for its change is lengthened (a full swing needs 33 units). The
+`aqua-0` table is reproduced byte for byte (`effectsMatchesCapturedPulse`). The old encoding
+also wrapped the rainbow and breathing base effects (40 and 80-unit steps).
+
+### One send to settle the wave fields (slopes already settled)
+
+Build a single test profile: every key on one effect slot, `aqua-3`'s packet with
+0x8C set to the right edge, and one cycle black → white over 100 units (1 s), hold 50,
+white → black over 100, slopes encoded Keyglow's way (±40 = 255·16/100, rounded toward
+zero). Expected if Keyglow is right: a smooth 1 s fade to white, then back, sweeping in
+from the right. Under our encoding the same cycle would be slopes ±127 and flicker
+through several wraps, so the outcome tells the two models apart without ambiguity.

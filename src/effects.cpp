@@ -1,6 +1,8 @@
 #include "effects.h"
 
+#include <algorithm>
 #include <cfenv>
+#include <cstdlib>
 #include <cmath>
 
 namespace {
@@ -74,16 +76,14 @@ EffectDef scaled(const EffectDef &def, int brightness, int speed) {
 }
 
 QList<Transition> transitions(const EffectDef &def, QString *error) {
-    QList<QColor> from{def.start}, to;
+    QList<QColor> targets;
     QList<int> durations;
     for (const Step &step : def.steps) {
-        from.append(step.color);
-        to.append(step.color);
+        targets.append(step.color);
         durations.append(step.duration);
     }
-    to.append(def.start);
+    targets.append(def.start);
     durations.append(def.closing);
-    from.removeLast();
 
     QList<Transition> result;
     if (durations.size() > kMaxSteps) {
@@ -91,38 +91,31 @@ QList<Transition> transitions(const EffectDef &def, QString *error) {
             *error = QString("%1 transitions, at most %2").arg(durations.size()).arg(kMaxSteps);
         return result;
     }
-    int sum[3] = {0, 0, 0};
+    // The controller holds colors in 8.4 fixed point and adds each slope once per time unit.
+    int value[3] = {def.start.red() * 16, def.start.green() * 16, def.start.blue() * 16};
+    int total = 0;
     for (int i = 0; i < durations.size(); ++i) {
-        int delta[3] = {roundHalfEven((to[i].red() - from[i].red()) / 2.0),
-                        roundHalfEven((to[i].green() - from[i].green()) / 2.0),
-                        roundHalfEven((to[i].blue() - from[i].blue()) / 2.0)};
-        // A full swing (255 to 0) is -127.5 in two-level units, one past what a signed
-        // byte holds: limit it, which ends the step one level short.
-        for (int c = 0; c < 3; ++c)
-            delta[c] = std::clamp(delta[c], -127, 127);
-        // Rounding and limiting can leave the cycle a level off; the closing transition
-        // absorbs it so the color returns exactly to the start on every loop.
-        if (i == durations.size() - 1)
-            for (int c = 0; c < 3; ++c)
-                delta[c] = -sum[c];
-        for (int c = 0; c < 3; ++c) {
-            if (delta[c] < -127 || delta[c] > 127) {
-                if (error)
-                    *error = QString("transition %1: color change too large").arg(i + 1);
-                return {};
-            }
-            sum[c] += delta[c];
-        }
         if (durations[i] < 1 || durations[i] > 65535) {
             if (error)
                 *error = QString("transition %1: duration %2 out of range 1..65535").arg(i + 1).arg(durations[i]);
             return {};
         }
-        result.append({qint8(delta[0]), qint8(delta[1]), qint8(delta[2]), quint16(durations[i])});
+        const int target[3] = {targets[i].red() * 16, targets[i].green() * 16, targets[i].blue() * 16};
+        // A slope fits a signed byte: a step too short for its color change is lengthened
+        // (a full swing needs 33 units) rather than left short of its color.
+        int duration = durations[i];
+        for (int c = 0; c < 3; ++c)
+            duration = std::max(duration, (std::abs(target[c] - value[c]) + 126) / 127);
+        // Integer division rounds toward zero, so a step never overshoots its color: the
+        // controller would wrap the channel instead of stopping at 0 or 255.
+        int slope[3];
+        for (int c = 0; c < 3; ++c) {
+            slope[c] = (target[c] - value[c]) / duration;
+            value[c] += slope[c] * duration;
+        }
+        total += duration;
+        result.append({qint8(slope[0]), qint8(slope[1]), qint8(slope[2]), quint16(duration)});
     }
-    int total = 0;
-    for (int d : durations)
-        total += d;
     // The packet stores the cycle's total duration in 16 bits too.
     if (total > 65535) {
         if (error)

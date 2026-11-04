@@ -350,33 +350,64 @@ private slots:
         QVERIFY2(errors.join("\n").contains(expected), qPrintable(errors.join("\n")));
     }
 
-    void effectsAresMatchesPython()
+    // SteelSeries Engine's own pulse (aqua-0) walks the hue wheel: slopes of 80/16 level per
+    // unit over 51 units are full 255-level swings. Our encoder must give the same table.
+    void effectsMatchesCapturedPulse()
     {
-        QByteArray wave, pulse;
-        for (const auto &[kind, data] : fixture("ares.hex"))
-            if (kind == 'F' && quint8(data.at(0)) == 0x0b)
-                (data.at(2) == 0 ? pulse : wave) = data;
+        QByteArray pulse;
+        QFile file(QString(KLC_FIXTURES) + "/aqua.json");
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        for (const QJsonValue &hex : QJsonDocument::fromJson(file.readAll()).array()) {
+            const QByteArray packet = QByteArray::fromHex(hex.toString().toLatin1());
+            if (quint8(packet.at(0)) == 0x0b && packet.at(2) == 0)
+                pulse = packet;
+        }
+        QVERIFY(!pulse.isEmpty());
+        const EffectDef def{QColor(255, 0, 0),
+                            {{QColor(255, 255, 0), 51}, {QColor(0, 255, 0), 51}, {QColor(0, 255, 255), 51},
+                             {QColor(0, 0, 255), 51}, {QColor(255, 0, 255), 51}},
+                            45, "aqua-0"};
         QString error;
-        QCOMPARE(transitions(builtinPalette("ares", false), &error), table(wave));
-        QCOMPARE(transitions(builtinPalette("ares", true), &error), table(pulse));
-        QVERIFY(error.isEmpty());
+        QCOMPARE(transitions(def, &error), table(pulse));
+        QVERIFY2(error.isEmpty(), qPrintable(error));
     }
 
-    void effectsCloses()
+    // The user's Tron wave at speed 235: its red step lasts 17 units, far from 32.
+    void effectsReachesStepColors()
+    {
+        const EffectDef def{QColor("#DFA100"), {{QColor("#DFA100"), 23}, {QColor("#FF000D"), 17}}, 23, "aqua-1"};
+        QString error;
+        const QList<Transition> list = transitions(def, &error);
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        const QList<QColor> reached = simulate(def.start, list);
+        QVERIFY2(reached.size() == 3, "a channel wraps");
+        QVERIFY2(near(reached[1], QColor("#FF000D"), 2), qPrintable(reached[1].name()));
+        QVERIFY2(near(reached[2], QColor("#DFA100"), 2), qPrintable(reached[2].name()));
+    }
+
+    // A slope holds at most 127/16 level per unit: a full swing needs 33 units, so a
+    // shorter step is lengthened rather than left short.
+    void effectsStretchesTooFastSteps()
+    {
+        const EffectDef def{QColor("#FFFFFF"), {{QColor("#FFFFFF"), 20}, {QColor("#000000"), 2}}, 2, "aqua-0"};
+        QString error;
+        const QList<Transition> list = transitions(def, &error);
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(list[1].duration, quint16(33));
+        const QList<QColor> reached = simulate(def.start, list);
+        QVERIFY2(reached.size() == 3, "a channel wraps");
+        QVERIFY2(near(reached[1], Qt::black, 2), "black not reached");
+    }
+
+    // The controller wraps a channel that leaves 0..255, so no step may overshoot.
+    void effectsNeverWraps()
     {
         const EffectDef def{QColor("#010101"), {{QColor("#FE00FF"), 10}, {QColor("#030303"), 10}}, 10, "aqua-1"};
         QString error;
         const QList<Transition> list = transitions(def, &error);
         QVERIFY2(error.isEmpty(), qPrintable(error));
-        int r = 0, g = 0, b = 0;
-        for (const Transition &t : list) {
-            r += t.dr;
-            g += t.dg;
-            b += t.db;
-        }
-        QCOMPARE(r, 0);
-        QCOMPARE(g, 0);
-        QCOMPARE(b, 0);
+        QVERIFY(!simulate(def.start, list).isEmpty());
+        QVERIFY2(near(simulate(def.start, list).last(), def.start, 2), "cycle does not come back");
     }
 
     void effectsScaled()
@@ -686,8 +717,17 @@ private slots:
         compareWithFixture(buildPackets(profile, Layout::gs76()), "static-zqsd.hex");
     }
 
-    void protocolAres() { compareWithFixture(buildPackets(builtinProfile("ares"), Layout::gs76()), "ares.hex"); }
-    void protocolTron() { compareWithFixture(buildPackets(builtinProfile("tron"), Layout::gs76()), "tron.hex"); }
+    // msi-kbd-effect wrote these fixtures with slopes of two levels per transition, which the
+    // keyboard showed wrong (Tron's red came out orange). Every other byte still has to match;
+    // the transition tables are checked against SteelSeries' own capture instead.
+    void protocolAres()
+    {
+        compareWithFixture(buildPackets(builtinProfile("ares"), Layout::gs76()), "ares.hex", SkipTransitions);
+    }
+    void protocolTron()
+    {
+        compareWithFixture(buildPackets(builtinProfile("tron"), Layout::gs76()), "tron.hex", SkipTransitions);
+    }
 
     void protocolNoReactiveByDefault()
     {
@@ -2029,15 +2069,16 @@ private slots:
         const BuildResult result = buildPackets(profile, Layout::gs76());
         QVERIFY2(result.errors.isEmpty(), qPrintable(result.errors.join("; ")));
         QString error;
-        int sum[3] = {0, 0, 0};
-        for (const Transition &t : transitions(baseEffect(profile.base), &error)) {
-            QVERIFY(qAbs(t.dr) <= 127 && qAbs(t.dg) <= 127 && qAbs(t.db) <= 127);
-            sum[0] += t.dr; sum[1] += t.dg; sum[2] += t.db;
-        }
+        const EffectDef def = baseEffect(profile.base);
+        const QList<Transition> list = transitions(def, &error);
         QVERIFY2(error.isEmpty(), qPrintable(error));
-        QCOMPARE(sum[0], 0);
-        QCOMPARE(sum[1], 0);
-        QCOMPARE(sum[2], 0);
+        for (const Transition &t : list)
+            QVERIFY(qAbs(t.dr) <= 127 && qAbs(t.dg) <= 127 && qAbs(t.db) <= 127);
+        const QList<QColor> reached = simulate(def.start, list);
+        QVERIFY2(reached.size() == list.size(), "a channel wraps");
+        for (int i = 0; i < def.steps.size(); ++i)
+            QVERIFY2(near(reached[i], def.steps[i].color, 2), qPrintable(reached[i].name()));
+        QVERIFY2(near(reached.last(), def.start, 2), qPrintable(reached.last().name()));
     }
 
     void effectsTotalDurationFits()
@@ -3332,15 +3373,23 @@ private:
         return paths;
     }
 
-    static void compareWithFixture(const BuildResult &result, const QString &name)
+    enum FixtureMode { AllBytes, SkipTransitions };
+
+    static void compareWithFixture(const BuildResult &result, const QString &name, FixtureMode mode = AllBytes)
     {
         QVERIFY2(result.errors.isEmpty(), qPrintable(result.errors.join("; ")));
         const auto expected = fixture(name);
         QCOMPARE(result.packets.size(), expected.size());
         for (int i = 0; i < expected.size(); ++i) {
             QCOMPARE(QChar(result.packets[i].kind == Packet::Feature ? 'F' : 'O'), expected[i].first);
-            if (result.packets[i].data != expected[i].second) {
-                const QByteArray got = result.packets[i].data, want = expected[i].second;
+            const QByteArray got = result.packets[i].data;
+            QByteArray want = expected[i].second;
+            // An effect packet's transition table (0x02..0x81) and total duration (0x98..0x99).
+            if (mode == SkipTransitions && quint8(want.at(0)) == 0x0b && got.size() == want.size()) {
+                want.replace(0x02, 0x80, got.mid(0x02, 0x80));
+                want.replace(0x98, 2, got.mid(0x98, 2));
+            }
+            if (got != want) {
                 int at = 0;
                 while (at < qMin(got.size(), want.size()) && got[at] == want[at])
                     ++at;
@@ -3362,6 +3411,30 @@ private:
             if (line.size() > 2)
                 packets.append({QChar(line.at(0)), QByteArray::fromHex(line.mid(2))});
         return packets;
+    }
+
+    // What the controller shows at the end of each transition: colors are 8.4 fixed point
+    // and each unit adds the slope. Empty when a channel would leave 0..255 and wrap.
+    static QList<QColor> simulate(const QColor &start, const QList<Transition> &list)
+    {
+        int value[3] = {start.red() * 16, start.green() * 16, start.blue() * 16};
+        QList<QColor> reached;
+        for (const Transition &t : list) {
+            const int slope[3] = {t.dr, t.dg, t.db};
+            for (int c = 0; c < 3; ++c) {
+                value[c] += slope[c] * t.duration;
+                if (value[c] < 0 || value[c] > 255 * 16)
+                    return {};
+            }
+            reached.append(QColor(value[0] / 16, value[1] / 16, value[2] / 16));
+        }
+        return reached;
+    }
+
+    static bool near(const QColor &a, const QColor &b, int levels)
+    {
+        return qAbs(a.red() - b.red()) <= levels && qAbs(a.green() - b.green()) <= levels &&
+               qAbs(a.blue() - b.blue()) <= levels;
     }
 
     // The transition table of an effect packet, as the controller stores it.

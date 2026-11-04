@@ -6,8 +6,8 @@
 
 #include "profile.h"
 
-// One entry of the controller's transition table: add these deltas, in units of two
-// color levels, to each channel over `duration` time units.
+// One entry of the controller's transition table: for `duration` time units (10 ms),
+// add these slopes, in 1/16 color level, to each channel once per unit.
 struct Transition {
     qint8 dr = 0, dg = 0, db = 0;
     quint16 duration = 0;
