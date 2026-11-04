@@ -2,7 +2,8 @@
 
 Per-key lighting editor for the SteelSeries KLC keyboard of the MSI GS76
 (`1038:113a`), built for Omarchy: a library of named lighting profiles that
-themes can link to, key groups with their own effects, an on-screen preview,
+themes can link to, key groups with their own effects, waves in eight
+directions (toward or away from any key), the power key, an on-screen preview,
 and `klc-light apply` for the theme hooks. Nothing reaches the
 keyboard until you press Apply, and each Apply sends once: this controller
 hangs on repeated sends.
@@ -25,6 +26,30 @@ hangs on repeated sends.
 - Exit status: 0 on success or when there is nothing to apply, 1 on any error
   (message on stderr), 2 when the keyboard is absent from the USB bus.
 - `KLC_LIGHT_FAKE_DEVICE=1 klc-light` prints the packets instead of sending.
+
+## Waves
+
+The base and each wave group run toward or away from an origin: the left or
+right edge, the top or bottom, the centre, or a key picked on the keyboard
+(Pick the key, then click it; Esc cancels). The size sets how fast the wave
+travels across the keys, from 1 (narrow bands) to 100. Positions are SteelSeries
+GG's own for the GE76 family, in the controller's units; `docs/origins.md`
+records how each byte was measured on the GS76.
+
+In a profile file a wave reads:
+
+```json
+"wave": { "origin": "KEY_G", "flow": "away", "size": 40 }
+```
+
+`origin` is `left`, `right`, `top`, `bottom`, `center` or a key id; `flow` is
+`toward` or `away`. Profiles from before waves had directions (`"origin":
+"aqua-N"`) are converted when read: `aqua-1` and `aqua-4` run to the right,
+`aqua-3` to the left, the others to the centre. They are written in the new
+form (profile version 3) the next time they are saved.
+
+The power key, top right, is lit like any other key. The small orange light
+beside it is a separate indicator the keyboard controller does not drive.
 
 ## Profile library
 
