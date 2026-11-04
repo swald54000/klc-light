@@ -15,6 +15,11 @@ GridLayout {
     // Index of the step whose color the picker edits: the first one of each newly opened
     // group or base.
     property int stepIndex: 0
+
+    function keyLabel(id) {
+        const key = backend.keys.find(k => k.id === id)
+        return key ? key.label : (id || "")
+    }
     readonly property int group: backend.currentGroup
     onGroupChanged: stepIndex = 0
     // A removed step may have been the selected one: keep to the steps that remain.
@@ -218,6 +223,66 @@ GridLayout {
             }
             RowLayout {
                 Button { text: qsTr("+ Step"); onClicked: backend.addStep() }
+            }
+        }
+
+        // Where a wave runs: to an edge or the centre, or toward or away from a picked key.
+        ColumnLayout {
+            Layout.fillWidth: true
+            visible: (panel.kind === "group" && panel.cur.behavior === "wave") || (panel.kind === "base" && panel.cur.type === "wave")
+            spacing: 4
+            FlatComboBox {
+                objectName: "waveDirectionBox"
+                Layout.fillWidth: true
+                model: [
+                    { value: "left", text: qsTr("Toward the left") },
+                    { value: "right", text: qsTr("Toward the right") },
+                    { value: "up", text: qsTr("Upward") },
+                    { value: "down", text: qsTr("Downward") },
+                    { value: "center-in", text: qsTr("Toward the centre") },
+                    { value: "center-out", text: qsTr("Out from the centre") },
+                    { value: "key-in", text: qsTr("Toward a key") },
+                    { value: "key-out", text: qsTr("Out from a key") }
+                ]
+                textRole: "text"
+                valueRole: "value"
+                currentIndex: Math.max(0, model.findIndex(m => m.value === panel.cur.direction))
+                onActivated: backend.setWaveDirection(currentValue)
+                ToolTip.text: qsTr("Wave direction")
+                ToolTip.visible: hovered
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                visible: panel.cur.direction === "key-in" || panel.cur.direction === "key-out"
+                Label {
+                    Layout.fillWidth: true
+                    text: qsTr("Key: %1").arg(panel.keyLabel(panel.cur.waveKey))
+                    elide: Text.ElideRight
+                }
+                Button {
+                    objectName: "pickOriginButton"
+                    text: qsTr("Pick the key")
+                    highlighted: backend.picking
+                    onClicked: backend.picking ? backend.cancelPick() : backend.pickWaveOrigin()
+                }
+            }
+            Label {
+                objectName: "pickHint"
+                Layout.fillWidth: true
+                visible: backend.picking
+                wrapMode: Text.WordWrap
+                font.pixelSize: 11
+                color: Material.accent
+                text: qsTr("Click a key to set the wave origin · Esc cancels")
+            }
+            Label { text: qsTr("Wave size: %1").arg(panel.cur.waveSize || 68); font.pixelSize: 11; opacity: 0.6 }
+            Slider {
+                objectName: "waveSizeSlider"
+                Layout.fillWidth: true
+                from: 1; to: 100; stepSize: 1
+                value: panel.cur.waveSize || 68
+                onPressedChanged: pressed ? backend.beginGesture() : backend.endGesture()
+                onMoved: backend.setWaveSize(value)
             }
         }
 

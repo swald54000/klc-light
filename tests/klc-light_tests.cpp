@@ -1740,6 +1740,80 @@ private slots:
         QCOMPARE(backend->createGroup(name), QString());
     }
 
+    void backendWaveDirections_data()
+    {
+        QTest::addColumn<QString>("direction");
+        QTest::addColumn<QString>("origin");
+        QTest::addColumn<QString>("flow");
+        QTest::newRow("left") << "left" << "left" << "toward";
+        QTest::newRow("right") << "right" << "right" << "toward";
+        QTest::newRow("up") << "up" << "top" << "toward";
+        QTest::newRow("down") << "down" << "bottom" << "toward";
+        QTest::newRow("center-in") << "center-in" << "center" << "toward";
+        QTest::newRow("center-out") << "center-out" << "center" << "away";
+        QTest::newRow("key-in") << "key-in" << "KEY_G" << "toward";
+        QTest::newRow("key-out") << "key-out" << "KEY_G" << "away";
+    }
+
+    void backendWaveDirections()
+    {
+        QFETCH(QString, direction);
+        QFETCH(QString, origin);
+        QFETCH(QString, flow);
+        EditorRun run;
+        run.backend->openBase();
+        run.backend->setBaseType("wave");
+        run.backend->setWaveDirection(direction);
+        QVERIFY(run.backend->document().base.wave == Wave({origin, flow, 68}));
+        QCOMPARE(run.backend->current()["direction"].toString(), direction);
+    }
+
+    void backendWaveKeyKept()
+    {
+        EditorRun run;
+        run.backend->openBase();
+        run.backend->setBaseType("wave");
+        run.backend->setWaveDirection("key-out");
+        run.backend->pickWaveOrigin();
+        QVERIFY(run.backend->picking());
+        QVERIFY(run.backend->pickKey("KEY_Q"));
+        QVERIFY(!run.backend->picking());
+        QVERIFY(run.backend->document().base.wave == Wave({"KEY_Q", "away", 68}));
+        QCOMPARE(run.backend->current()["waveKey"].toString(), QString("KEY_Q"));
+        run.backend->setWaveDirection("key-in");
+        QVERIFY(run.backend->document().base.wave == Wave({"KEY_Q", "toward", 68}));
+        QVERIFY(!run.backend->pickKey("KEY_W")); // not picking: the click is a normal one
+    }
+
+    void backendNewWaveGroupDefaultWave()
+    {
+        EditorRun run;
+        makeGroup(run.backend, "F", {"KEY_F1"});
+        QCOMPARE(run.backend->setBehavior("wave"), QString());
+        QVERIFY(run.backend->document().groups[0].wave == Wave{});
+        QCOMPARE(run.backend->setBehavior("static"), QString());
+        QCOMPARE(run.backend->setBehavior("wave"), QString());
+        QVERIFY(run.backend->document().groups[0].wave == Wave{});
+        QVERIFY(validate(run.backend->document(), Layout::gs76()).isEmpty());
+    }
+
+    void backendWaveSizeOneUndoStep()
+    {
+        EditorRun run;
+        run.backend->openBase();
+        run.backend->setBaseType("wave");
+        run.backend->beginGesture();
+        for (int size = 60; size >= 20; size -= 10)
+            run.backend->setWaveSize(size);
+        run.backend->endGesture();
+        QCOMPARE(run.backend->document().base.wave.size, 20);
+        QCOMPARE(run.backend->current()["waveSize"].toInt(), 20);
+        run.backend->undo();
+        QCOMPARE(run.backend->document().base.wave.size, 68);
+        run.backend->setWaveSize(500);
+        QCOMPARE(run.backend->document().base.wave.size, 100);
+    }
+
     void backendClickGroupedKeyOpensGroup()
     {
         EditorRun run;
@@ -3022,6 +3096,60 @@ private slots:
         QVERIFY(behavior && behavior->isVisible());
     }
 
+    void uiWaveDirectionChoices()
+    {
+        Ui ui;
+        makeGroup(ui.run.backend, "F", {"KEY_F1"});
+        QCOMPARE(ui.run.backend->setBehavior("wave"), QString());
+        QQuickItem *box = nullptr;
+        QTRY_VERIFY((box = findItem(ui.window->contentItem(), "waveDirectionBox")) && box->isVisible());
+        QCOMPARE(box->property("count").toInt(), 8);
+        QQuickItem *pick = findItem(ui.window->contentItem(), "pickOriginButton");
+        QVERIFY(pick && !pick->isVisible());
+    }
+
+    void uiPickOrigin()
+    {
+        Ui ui;
+        openKeyWave(ui);
+        QQuickItem *pick = nullptr;
+        QTRY_VERIFY((pick = findItem(ui.window->contentItem(), "pickOriginButton")) && pick->isVisible());
+        QTest::mouseClick(ui.window, Qt::LeftButton, {}, itemCentre(pick));
+        QTRY_VERIFY(ui.run.backend->picking());
+        QTest::mouseClick(ui.window, Qt::LeftButton, {}, keyCentre(ui.window, ui.run.backend, "KEY_J"));
+        QTRY_VERIFY(!ui.run.backend->picking());
+        QCOMPARE(ui.run.backend->document().groups[0].wave.origin, QString("KEY_J"));
+        QVERIFY(ui.run.backend->selection().isEmpty());
+        QCOMPARE(ui.run.backend->currentKind(), QString("group"));
+        QQuickItem *ring = findItem(findItem(ui.window->contentItem(), "key_KEY_J"), "originRing");
+        QTRY_VERIFY(ring && ring->isVisible());
+        QVERIFY(!findItem(findItem(ui.window->contentItem(), "key_KEY_G"), "originRing")->isVisible());
+    }
+
+    void uiPickOriginEsc()
+    {
+        Ui ui;
+        openKeyWave(ui);
+        ui.run.backend->pickWaveOrigin();
+        QTRY_VERIFY(ui.run.backend->picking());
+        QTest::keyClick(ui.window, Qt::Key_Escape);
+        QTRY_VERIFY(!ui.run.backend->picking());
+        QCOMPARE(ui.run.backend->document().groups[0].wave.origin, QString("KEY_G"));
+        QCOMPARE(ui.run.backend->currentKind(), QString("group"));
+    }
+
+    void uiPickOriginUndo()
+    {
+        Ui ui;
+        openKeyWave(ui);
+        ui.run.backend->pickWaveOrigin();
+        QTest::mouseClick(ui.window, Qt::LeftButton, {}, keyCentre(ui.window, ui.run.backend, "KEY_J"));
+        QTRY_COMPARE(ui.run.backend->document().groups[0].wave.origin, QString("KEY_J"));
+        ui.run.backend->undo();
+        QCOMPARE(ui.run.backend->document().groups[0].wave.origin, QString("KEY_G"));
+        QVERIFY(ui.run.backend->selection().isEmpty());
+    }
+
     void uiSelectionPanel()
     {
         Ui ui;
@@ -3826,6 +3954,16 @@ private:
         QQmlApplicationEngine engine;
         QQuickWindow *window = nullptr;
     };
+
+    // A wave group open on KEY_W..KEY_D with its direction set to "key-in".
+    static void openKeyWave(Ui &ui)
+    {
+        makeGroup(ui.run.backend, "ZQSD", {"KEY_W", "KEY_A", "KEY_S", "KEY_D"});
+        QCOMPARE(ui.run.backend->setBehavior("wave"), QString());
+        ui.run.backend->setWaveDirection("key-in");
+        QTRY_VERIFY(!keyCentre(ui.window, ui.run.backend, "KEY_J").isNull());
+    }
+
 };
 
 QTEST_MAIN(KlcLightTests)

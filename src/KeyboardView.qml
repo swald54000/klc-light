@@ -97,6 +97,20 @@ Item {
                 border.color: key.selected ? "white" : Qt.rgba(0, 0, 0, 0.6)
             }
 
+            // The open wave's origin key: a white ring.
+            Rectangle {
+                objectName: "originRing"
+                anchors.centerIn: parent
+                width: Math.min(parent.width, parent.height) * 0.8
+                height: width
+                radius: width / 2
+                visible: backend.current.waveKey === key.modelData.id
+                color: "transparent"
+                border.width: Math.max(1.5, 2 * view.scale)
+                border.color: "white"
+                z: 2
+            }
+
             // The open group's keys: a faint white veil with a thin accent outline.
             Rectangle {
                 anchors.fill: parent
@@ -152,6 +166,9 @@ Item {
             dragging = false
         }
         onPositionChanged: mouse => {
+            // Picking a wave origin takes one click, not a band.
+            if (backend.picking)
+                return
             const r = Qt.rect(Math.min(start.x, mouse.x), Math.min(start.y, mouse.y),
                               Math.abs(mouse.x - start.x), Math.abs(mouse.y - start.y))
             if (!dragging && r.width + r.height < 6)
@@ -161,6 +178,12 @@ Item {
             band.visible = true
         }
         onReleased: mouse => {
+            if (backend.picking) {
+                const picked = view.keysIn(Qt.rect(mouse.x, mouse.y, 1, 1))
+                if (picked.length > 0)
+                    backend.pickKey(picked[0])
+                return
+            }
             const add = (mouse.modifiers & (Qt.ControlModifier | Qt.ShiftModifier)) !== 0
             if (dragging) {
                 band.visible = false

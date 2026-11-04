@@ -122,6 +122,9 @@ void Backend::changed() {
         m_kind = Kind::Base;
         m_group = -1;
     }
+    // Picking an origin only makes sense while a wave is open.
+    if (Document copy = m_doc; m_picking && !openWave(copy))
+        cancelPick();
     m_preview.emplace(lighting(m_doc), Layout::gs76());
     ++m_revision;
     emit profileChanged();
@@ -154,6 +157,7 @@ void Backend::setCurrent(Kind kind, int group) {
         return;
     m_kind = kind;
     m_group = group;
+    cancelPick();
     emit currentChanged();
     emit profileChanged();
 }
@@ -211,14 +215,21 @@ int Backend::animatedCount() const { return animatedSlots(lighting(m_doc)); }
 
 QVariantMap Backend::current() const {
     switch (m_kind) {
-    case Kind::Base:
-        return {{"type", m_doc.base.type}, {"color", m_doc.base.color},
-                {"steps", stepsList(m_doc.base.steps)}};
+    case Kind::Base: {
+        QVariantMap map{{"type", m_doc.base.type}, {"color", m_doc.base.color},
+                        {"steps", stepsList(m_doc.base.steps)}};
+        if (m_doc.base.type == "wave")
+            map.insert(waveSummary(m_doc.base.wave));
+        return map;
+    }
     case Kind::Group: {
         const Group &group = m_doc.groups[m_group];
-        return {{"name", group.name}, {"behavior", group.behavior}, {"type", group.behavior},
-                {"color", swatch(group)}, {"steps", stepsList(group.steps)},
-                {"count", int(group.keys.size())}};
+        QVariantMap map{{"name", group.name}, {"behavior", group.behavior}, {"type", group.behavior},
+                        {"color", swatch(group)}, {"steps", stepsList(group.steps)},
+                        {"count", int(group.keys.size())}};
+        if (group.behavior == "wave")
+            map.insert(waveSummary(group.wave));
+        return map;
     }
     case Kind::Selection:
         return {{"count", int(m_selection.size())}, {"name", defaultGroupName()}};
@@ -493,6 +504,87 @@ void Backend::removeStep(int index) {
         if (m_kind == Kind::Group)
             d.groups[m_group].start = steps->first().color;
     });
+}
+
+Wave *Backend::openWave(Document &doc) const {
+    if (m_kind == Kind::Base && doc.base.type == "wave")
+        return &doc.base.wave;
+    if (m_kind == Kind::Group && m_group >= 0 && m_group < doc.groups.size() && doc.groups[m_group].behavior == "wave")
+        return &doc.groups[m_group].wave;
+    return nullptr;
+}
+
+QVariantMap Backend::waveSummary(const Wave &wave) const {
+    const bool key = wave.origin.startsWith("KEY_");
+    const bool away = wave.flow == "away";
+    QString direction;
+    if (key)
+        direction = away ? "key-out" : "key-in";
+    else if (wave.origin == "center")
+        direction = away ? "center-out" : "center-in";
+    else
+        direction = QHash<QString, QString>{{"left", "left"}, {"right", "right"}, {"top", "up"}, {"bottom", "down"}}
+                        .value(wave.origin, "left");
+    return {{"direction", direction}, {"waveKey", key ? wave.origin : QString()}, {"waveSize", wave.size}};
+}
+
+void Backend::setWaveDirection(const QString &direction) {
+    static const QHash<QString, QPair<QString, QString>> fixed{
+        {"left", {"left", "toward"}},     {"right", {"right", "toward"}},       {"up", {"top", "toward"}},
+        {"down", {"bottom", "toward"}},   {"center-in", {"center", "toward"}}, {"center-out", {"center", "away"}}};
+    if (direction != "key-in" && direction != "key-out")
+        cancelPick();
+    edit([&](Document &d) {
+        Wave *wave = openWave(d);
+        if (!wave)
+            return;
+        if (fixed.contains(direction)) {
+            wave->origin = fixed.value(direction).first;
+            wave->flow = fixed.value(direction).second;
+        } else if (direction == "key-in" || direction == "key-out") {
+            // Switching between the two keeps the key; coming from a direction starts at G,
+            // in the middle of the keyboard, until a key is picked.
+            if (!wave->origin.startsWith("KEY_"))
+                wave->origin = "KEY_G";
+            wave->flow = direction == "key-in" ? "toward" : "away";
+        }
+    });
+}
+
+void Backend::setWaveSize(int size) {
+    size = std::clamp(size, 1, 100);
+    edit([&](Document &d) {
+        if (Wave *wave = openWave(d))
+            wave->size = size;
+    });
+}
+
+void Backend::pickWaveOrigin() {
+    Document copy = m_doc;
+    if (m_picking || !openWave(copy))
+        return;
+    m_picking = true;
+    emit pickingChanged();
+}
+
+void Backend::cancelPick() {
+    if (!m_picking)
+        return;
+    m_picking = false;
+    emit pickingChanged();
+}
+
+bool Backend::pickKey(const QString &id) {
+    if (!m_picking)
+        return false;
+    cancelPick();
+    const Key *key = Layout::gs76().byId(id);
+    if (key && key->visible)
+        edit([&](Document &d) {
+            if (Wave *wave = openWave(d))
+                wave->origin = id;
+        });
+    return true;
 }
 
 void Backend::setBrightness(int value) {

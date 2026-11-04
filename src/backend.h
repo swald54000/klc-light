@@ -48,6 +48,8 @@ class Backend : public QObject {
     Q_PROPERTY(QString notice READ notice NOTIFY errorChanged)
     Q_PROPERTY(bool experimentalReactive READ experimentalReactive WRITE setExperimentalReactive NOTIFY profileChanged)
     Q_PROPERTY(QStringList savedColors READ savedColors NOTIFY savedColorsChanged)
+    // The next click on a key sets the open wave's origin instead of selecting it.
+    Q_PROPERTY(bool picking READ picking NOTIFY pickingChanged)
     // The library, read afresh from disk each time: a theme hook can change it while the
     // editor is open.
     Q_PROPERTY(QStringList profiles READ profiles NOTIFY libraryChanged)
@@ -87,6 +89,7 @@ public:
     QString notice() const { return m_notice; }
     bool experimentalReactive() const { return m_experimentalReactive; }
     void setExperimentalReactive(bool enabled);
+    bool picking() const { return m_picking; }
     QStringList savedColors() const { return m_savedColors; }
     const Document &document() const { return m_doc; }
     QStringList profiles() const { return fresh().names(); }
@@ -118,6 +121,13 @@ public:
     Q_INVOKABLE void setStepDuration(int index, int duration);
     Q_INVOKABLE void addStep();
     Q_INVOKABLE void removeStep(int index);
+    // left, right, up, down, center-in, center-out, key-in, key-out, for the open wave.
+    Q_INVOKABLE void setWaveDirection(const QString &direction);
+    Q_INVOKABLE void setWaveSize(int size); // 1..100
+    Q_INVOKABLE void pickWaveOrigin();
+    Q_INVOKABLE void cancelPick();
+    // True when picking: the key becomes the open wave's origin and picking ends.
+    Q_INVOKABLE bool pickKey(const QString &id);
     Q_INVOKABLE void setReactiveEnabled(bool enabled);
     Q_INVOKABLE void setReactiveDuration(int duration);
     Q_INVOKABLE void setSavedColor(int index, const QColor &color);
@@ -152,6 +162,7 @@ signals:
     void errorChanged();
     void savedColorsChanged();
     void libraryChanged();
+    void pickingChanged();
     void applyFinished(const ApplyResult &result);
 
 private:
@@ -186,6 +197,10 @@ private:
     std::optional<Preview> m_preview;
     QList<Document> m_undo, m_redo;
     bool m_inGesture = false;       // between beginGesture() and endGesture()
+    // The wave the panel shows (an animated wave base or wave group), null otherwise.
+    Wave *openWave(Document &doc) const;
+    QVariantMap waveSummary(const Wave &wave) const;
+    bool m_picking = false;         // between pickWaveOrigin() and a key click or cancelPick()
     bool m_gestureRecorded = false; // the gesture already pushed its undo step
     QStringList m_selection;
     Kind m_kind = Kind::Base;

@@ -30,7 +30,20 @@ ApplicationWindow {
     Shortcut { sequences: [StandardKey.Save]; context: Qt.ApplicationShortcut; onActivated: backend.save() }
     Shortcut { sequences: [StandardKey.Undo]; context: Qt.ApplicationShortcut; onActivated: backend.undo() }
     Shortcut { sequence: "Ctrl+Shift+Z"; context: Qt.ApplicationShortcut; onActivated: backend.redo() }
-    Shortcut { sequence: "Esc"; context: Qt.ApplicationShortcut; onActivated: { win.helpVisible = false; backend.openBase(); backend.clearSelection() } }
+    Shortcut {
+        sequence: "Esc"
+        context: Qt.ApplicationShortcut
+        // Esc first cancels picking a wave origin, keeping the panel open.
+        onActivated: {
+            if (backend.picking) {
+                backend.cancelPick()
+                return
+            }
+            win.helpVisible = false
+            backend.openBase()
+            backend.clearSelection()
+        }
+    }
 
     function requestQuit() {
         if (backend.dirty)
