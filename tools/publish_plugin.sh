@@ -5,10 +5,10 @@ set -eu
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 DEST="${1:?usage: publish_plugin.sh <plugin repository checkout>}"
 SRC="$ROOT/omarchy-plugin/swald.klc-light"
-find "$DEST" -mindepth 1 -maxdepth 1 ! -name .git ! -name README.md ! -name LICENSE -exec rm -rf {} +
+find "$DEST" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
 cp -R "$SRC"/. "$DEST"/
 cp "$ROOT/LICENSE" "$DEST/LICENSE"
-[ -f "$DEST/README.md" ] || cat > "$DEST/README.md" <<'README'
+cat > "$DEST/README.md" <<'README'
 # KLC Light bar widget for Omarchy
 
 A bar widget for [KLC Light](https://github.com/swald54000/klc-light), the per-key keyboard
@@ -22,6 +22,15 @@ Needs KLC Light installed (`yay -S klc-light`, then join the `klc-light` group).
 ```sh
 omarchy plugin add https://github.com/swald54000/omarchy-klc-light.git --enable
 ```
+
+To remove it:
+
+```sh
+omarchy plugin remove swald.klc-light
+```
+
+It only runs the `klc-light` command line (`list`, `apply`, `off`) and reads
+`~/.config/klc-light/state.json`; it changes no configuration. MIT license.
 README
 omarchy plugin validate "$DEST"
 echo "plugin copied to $DEST"
