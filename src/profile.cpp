@@ -85,9 +85,12 @@ Wave waveFromJson(const QJsonObject &holder) {
         return normalized({object.value("origin").toString(defaults.origin), object.value("flow").toString(defaults.flow),
                            object.value("size").toInt(defaults.size)});
     }
-    if (holder.contains("origin"))
-        return waveFromAqua(holder.value("origin").toString());
-    return {};
+    // An origin outside the captured six is kept as written, so validation reports it.
+    static const QRegularExpression aqua("^aqua-[0-5]$");
+    const QString origin = holder.value("origin").toString();
+    if (aqua.match(origin).hasMatch())
+        return waveFromAqua(origin);
+    return {origin, "toward", 68};
 }
 
 QStringList validateWave(const Wave &wave, const QString &where, const Layout &layout) {
@@ -193,7 +196,8 @@ std::optional<Profile> profileFromJson(const QJsonObject &object, QStringList *e
         for (const QJsonValue &key : e.value("keys").toArray())
             effect.keys.append(key.toString());
         effect.steps = stepsFromJson(e.value("steps"), where, &problems);
-        effect.wave = waveFromJson(e);
+        if (effect.type == "wave")
+            effect.wave = waveFromJson(e);
         effect.closing = e.value("closing").toInt(0);
         if (e.contains("start")) {
             if (const auto color = parseColor(e.value("start"), where, &problems))

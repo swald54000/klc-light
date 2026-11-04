@@ -32,7 +32,8 @@ Wave waveFromAqua(const QString &origin);
 // A wave leaving an edge is the same, to the eye, as one running to the opposite edge.
 Wave normalized(const Wave &wave);
 QJsonObject waveToJson(const Wave &wave);
-// Reads holder["wave"], else an older holder["origin"]; normalized.
+// Reads holder["wave"], else an older holder["origin"] ("aqua-0".."aqua-5"); normalized.
+// Any other origin, or none, is kept as written for validateWave to report.
 Wave waveFromJson(const QJsonObject &holder);
 QStringList validateWave(const Wave &wave, const QString &where, const Layout &layout);
 

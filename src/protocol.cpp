@@ -162,6 +162,9 @@ WaveFields waveFields(const Wave &wave, const Layout &layout) {
         f.x = midX;
         f.y = w.origin == "bottom" ? 0 : top;
         f.alongY = true;
+        // The board is a quarter as tall as wide: slowed in proportion, a vertical wave
+        // shows as many bands as a horizontal one of the same size.
+        f.speed = std::max(1, int(std::lround(f.speed * double(top) / right)));
     } else {
         const Key *key = layout.byId(w.origin);
         f.x = key && key->cx >= 0 ? key->cx : midX;

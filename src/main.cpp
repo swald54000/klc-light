@@ -12,6 +12,7 @@
 #include <QStandardPaths>
 #include <QThread>
 
+#include "version.h"
 #include "backend.h"
 #include "cli.h"
 #include "device.h"
@@ -39,7 +40,8 @@ int runCommand(int argc, char *argv[]) {
     Device device(transport, binder, runtime, [](int ms) { QThread::msleep(ms); });
 
     QTextStream out(stdout), err(stderr);
-    CliEnv env{ThemePaths::standard(), QDir::homePath() + "/.config/klc-light", &device, &out, &err};
+    CliEnv env{ThemePaths::standard(), QDir::homePath() + "/.config/klc-light", &device, &out, &err,
+               qEnvironmentVariableIntValue("KLC_LIGHT_FAKE_DEVICE") == 1};
     return runCli(args, env);
 }
 
@@ -52,7 +54,7 @@ int main(int argc, char *argv[]) {
 
     QGuiApplication app(argc, argv);
     app.setApplicationName("klc-light");
-    app.setApplicationVersion("0.2.0");
+    app.setApplicationVersion(kVersion);
 
     // Matches the window to klc-light.desktop, so the compositor (Wayland app_id)
     // and the launcher pick up the installed icon.

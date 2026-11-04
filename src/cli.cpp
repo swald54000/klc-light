@@ -104,6 +104,15 @@ int runCli(const QStringList &args, CliEnv &env) {
                       int(built.packets.size()), source);
     }
 
+    if (env.fake) {
+        const BuildResult built = build();
+        if (!built.errors.isEmpty())
+            return finish(env, json, false, built.errors.join("\n"), 0, source);
+        for (const Packet &packet : built.packets)
+            *env.out << (packet.kind == Packet::Feature ? "F " : "O ") << packet.data.toHex() << "\n";
+        return finish(env, json, true, QString(), int(built.packets.size()), source);
+    }
+
     // The theme is read again once it is this send's turn, so the last theme of a quick
     // series of switches is the one that ends up on the keyboard.
     int count = 0;

@@ -174,7 +174,8 @@ std::optional<Document> documentFromJson(const QJsonObject &object, QStringList 
                     group.color = *color;
         } else {
             group.steps = stepsFromJson(g.value("steps"), where, &problems);
-            group.wave = waveFromJson(g);
+            if (group.behavior == "wave")
+                group.wave = waveFromJson(g);
             group.closing = g.value("closing").toInt(0);
             if (g.contains("start")) {
                 if (const auto color = parseColor(g.value("start"), where, &problems))

@@ -21,6 +21,7 @@
 #include "preview.h"
 #include "profile.h"
 #include "protocol.h"
+#include "version.h"
 #include "themeprofile.h"
 
 #include <QJsonArray>
@@ -554,6 +555,34 @@ private slots:
         QVERIFY2(errors.join("\n").contains(expected), qPrintable(errors.join("\n")));
     }
 
+    void profileLegacyOriginUnknownRejected()
+    {
+        const QByteArray json = R"({
+          "version": 1, "brightness": 100, "speed": 100,
+          "base": { "type": "wave", "steps": [["#DFA100", 55]], "origin": "aqua-9" },
+          "reactive": { "enabled": false, "color": "#FFFFFF", "duration": 30 }
+        })";
+        QStringList errors;
+        const auto profile = profileFromJson(QJsonDocument::fromJson(json).object(), &errors);
+        QVERIFY2(profile, qPrintable(errors.join("; ")));
+        QVERIFY(validate(*profile, Layout::gs76()).join("\n").contains("wave origin: unknown \"aqua-9\""));
+    }
+
+    void documentPulseGroupIgnoresWave()
+    {
+        const QByteArray json = R"({
+          "version": 3, "name": "P", "brightness": 100, "speed": 100,
+          "base": { "type": "static", "color": "#000000" },
+          "groups": [ { "name": "g", "behavior": "pulse", "keys": ["KEY_F1"],
+                        "steps": [["#FF0000", 30]], "wave": { "origin": "KEY_ZZ" } } ],
+          "reactive": { "enabled": false, "color": "#FFFFFF", "duration": 30 }
+        })";
+        QStringList errors;
+        const auto doc = documentFromJson(QJsonDocument::fromJson(json).object(), &errors);
+        QVERIFY2(doc, qPrintable(errors.join("; ")));
+        QVERIFY(doc->groups.at(0).wave == Wave{});
+    }
+
     void profileWaveOriginHiddenKeyRejected()
     {
         Profile profile;
@@ -595,7 +624,8 @@ private slots:
 
     void previewWaveTowardTop()
     {
-        expectLead({"top", "toward", 20}, "KEY_SPACE", "KEY_F5", 1075 * 10.0 / waveSpeed(20));
+        expectLead({"top", "toward", 20}, "KEY_SPACE", "KEY_F5",
+                   1075 * 10.0 / waveFields({"top", "toward", 20}, Layout::gs76()).speed);
     }
 
     void previewWaveAwayFromKey()
@@ -961,6 +991,16 @@ private slots:
         QCOMPARE(powerPacket(result).mid(4 + 11 * 12, 12).toHex(' '), QByteArray("10 20 30 a0 b0 c0 23 01 00 08 00 66"));
     }
 
+    // The keyboard is 1075 units tall and 4294 wide: at the same size, a vertical wave
+    // travels a quarter as fast so it shows as many bands as a horizontal one (at 326 the
+    // GS76 showed all rows in step).
+    void protocolVerticalWaveScaled()
+    {
+        QCOMPARE(waveFields({"top", "toward", 68}, Layout::gs76()).speed, 82);
+        QCOMPARE(waveFields({"bottom", "toward", 1}, Layout::gs76()).speed, 8);
+        QCOMPARE(waveFields({"left", "toward", 68}, Layout::gs76()).speed, 326);
+    }
+
     void protocolWaveSpeed()
     {
         QCOMPARE(waveSpeed(1), 31);
@@ -995,7 +1035,7 @@ private slots:
         QCOMPARE(f.y, y);
         QCOMPARE(f.alongX, alongX);
         QCOMPARE(f.alongY, alongY);
-        QCOMPARE(f.speed, 326);
+        QCOMPARE(f.speed, alongX ? 326 : 82);
         QVERIFY(!f.away);
         QVERIFY(waveFields({origin == "left" || origin == "right" || origin == "top" || origin == "bottom" ? "center" : origin,
                             "away", 68}, Layout::gs76()).away);
@@ -1496,6 +1536,22 @@ private slots:
         QCOMPARE(run.exec({"apply", profile}), 1);
         QVERIFY2(run.err.contains("KEY_NOPE"), qPrintable(run.err));
         QVERIFY(run.log.events.isEmpty());
+    }
+
+    // KLC_LIGHT_FAKE_DEVICE=1 must keep the command line off the keyboard too.
+    void cliFakeDevicePrints()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tokyo-night");
+        addProfile(dir, "Tokyo", "#7aa2f7", "tokyo-night");
+        CliRun run(dir, paths);
+        run.env.fake = true;
+        QCOMPARE(run.exec({"apply", "--theme"}), 0);
+        QCOMPARE(run.log.events.count("send"), 0);
+        QVERIFY(!run.log.events.contains("open"));
+        QCOMPARE(run.out.count("\nF 0e"), 3);
+        QVERIFY(run.out.startsWith("F 0e"));
+        QVERIFY(Library(dir.path() + "/klc").applied() != QString("Tokyo"));
     }
 
     void cliNothing()
@@ -3688,6 +3744,15 @@ private slots:
             ids.insert(key.id);
             QCOMPARE(Layout::gs76().byId(key.id)->hid, key.hid);
         }
+    }
+
+    void versionMatchesPackage()
+    {
+        QFile pkgbuild(QString(KLC_FIXTURES) + "/../../pkgbuild/PKGBUILD");
+        QVERIFY(pkgbuild.open(QIODevice::ReadOnly));
+        const QString text = QString::fromUtf8(pkgbuild.readAll());
+        const QRegularExpression ver("pkgver=([0-9.]+)");
+        QCOMPARE(QString::fromLatin1(kVersion), ver.match(text).captured(1));
     }
 
     void layoutPowerKey()

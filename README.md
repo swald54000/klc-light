@@ -25,7 +25,7 @@ hangs on repeated sends.
   (`{"message":"7 packets OK","ok":true,"packets":7,"source":"Tron"}`). `--json` works with sending too.
 - Exit status: 0 on success or when there is nothing to apply, 1 on any error
   (message on stderr), 2 when the keyboard is absent from the USB bus.
-- `KLC_LIGHT_FAKE_DEVICE=1 klc-light` prints the packets instead of sending.
+- `KLC_LIGHT_FAKE_DEVICE=1` prints the packets instead of sending them, in the editor and with `klc-light apply` alike.
 
 ## Waves
 

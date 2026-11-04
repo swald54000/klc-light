@@ -13,6 +13,9 @@ struct CliEnv {
     Device *device;
     QTextStream *out;
     QTextStream *err;
+    // KLC_LIGHT_FAKE_DEVICE=1: print the packets ("F <hex>" or "O <hex>" per line) instead
+    // of sending them.
+    bool fake = false;
 };
 
 // `klc-light apply [<name> | <file.json>] [--theme] [--check] [--json] [--experimental-reactive]`.
