@@ -169,3 +169,20 @@ GG also gives each GE76 key's position (`get-prism-sync-nonvariant-hid-info`, x 
 y 89..256, y growing upward: the space bar is at 89, the F row at 256; power at 807, 256).
 Scaled by 4294 / 667 ≈ 6.44 in both axes, that span is 4294 × 1075, the controller's own
 range: these are very likely its units, up to an offset.
+
+## Directions checked on the GS76 with klc-light 0.3.0 (2026-11-04)
+
+One send each, base wave white → blue, size 68, plus the power key:
+
+| profile | seen |
+|---|---|
+| static cyan, power key green | power key green (packet of 12 elements, no code-0 filler) |
+| toward the left / right | left / right, as expected |
+| toward the top (y 1075, GG's "up") | fronts running **down** |
+| toward the bottom (y 0) | fronts running **up** |
+| toward / out from the centre | as expected |
+| out from Esc, toward keypad Enter | rings from Esc, closing on keypad Enter |
+
+So the controller's y grows downward, unlike GG's table: positions are now
+y' = (256 − y_GG) · 6.44, the F row at 0 and the space bar at 1075, and `top` is y 0.
+The radial checks could not tell, since at size 68 the height adds little lag.

@@ -77,9 +77,10 @@ def gg_positions():
     variant = text.split("(define (get-prism-sync-variant-hid-info)")[1].split("((3)")[0]
     positions = triples(variant)
     positions.update(triples(fixed))
-    # GG: x 140..807, y 89..256 growing upward; the controller spans x 0..4294.
+    # GG: x 140..807, y 89..256 growing upward; the controller spans x 0..4294 with y
+    # growing downward (checked on the GS76: a wave "toward y 1075" ran down to the space bar).
     scale = 4294 / (807 - 140)
-    return {h: (round((x - 140) * scale), round((y - 89) * scale)) for h, (x, y) in positions.items()}
+    return {h: (round((x - 140) * scale), round((256 - y) * scale)) for h, (x, y) in positions.items()}
 
 
 def main():

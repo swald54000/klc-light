@@ -1017,10 +1017,10 @@ private slots:
         QTest::addColumn<bool>("alongY");
         QTest::newRow("left") << "left" << 0 << 538 << true << false;
         QTest::newRow("right") << "right" << 4294 << 538 << true << false;
-        QTest::newRow("top") << "top" << 2147 << 1075 << false << true;
-        QTest::newRow("bottom") << "bottom" << 2147 << 0 << false << true;
+        QTest::newRow("top") << "top" << 2147 << 0 << false << true;
+        QTest::newRow("bottom") << "bottom" << 2147 << 1075 << false << true;
         QTest::newRow("center") << "center" << 2147 << 538 << true << true;
-        QTest::newRow("space") << "KEY_SPACE" << 1738 << 0 << true << true;
+        QTest::newRow("space") << "KEY_SPACE" << 1738 << 1075 << true << true;
     }
 
     void protocolWaveFields()
@@ -1058,8 +1058,8 @@ private slots:
         const BuildResult result = buildPackets(profile, Layout::gs76());
         QVERIFY2(result.errors.isEmpty(), qPrintable(result.errors.join("; ")));
         const QByteArray packet = effectPacketOf(result, 0);
-        // 0x8A level, x 0, y 1075, x and y scaling (radial), speed 1001.
-        QCOMPARE(packet.mid(0x8a, 0x0c).toHex(' '), QByteArray("ff 00 00 00 33 04 01 00 01 00 e9 03"));
+        // 0x8A level, x 0, y 0 (Esc, top left), x and y scaling (radial), speed 1001.
+        QCOMPARE(packet.mid(0x8a, 0x0c).toHex(' '), QByteArray("ff 00 00 00 00 00 01 00 01 00 e9 03"));
         QCOMPARE(quint8(packet.at(0x9a)), quint8(1));
         QString error;
         const QList<Transition> table = transitions(scaled(baseEffect(profile.base), 100, 100), &error);
@@ -3763,17 +3763,18 @@ private slots:
         QVERIFY(power->visible);
         QVERIFY(Layout::gs76().group("all").contains("KEY_POWER"));
         QCOMPARE(power->cx, 4294);
-        QCOMPARE(power->cy, 1075);
+        QCOMPARE(power->cy, 0);
     }
 
-    // Key positions in the controller's units, from SteelSeries GG's GE76 table.
+    // Key positions in the controller's units, from SteelSeries GG's GE76 table; y grows
+    // downward, as the GS76 showed (GG's own y grows upward).
     void layoutControllerPositions()
     {
         const Layout &l = Layout::gs76();
         QCOMPARE(l.byId("KEY_ESC")->cx, 0);
-        QCOMPARE(l.byId("KEY_ESC")->cy, 1075);
+        QCOMPARE(l.byId("KEY_ESC")->cy, 0);
         QCOMPARE(l.byId("KEY_SPACE")->cx, 1738);
-        QCOMPARE(l.byId("KEY_SPACE")->cy, 0);
+        QCOMPARE(l.byId("KEY_SPACE")->cy, 1075);
         for (const Key &key : l.keys())
             QVERIFY2(key.cx >= 0 && key.cy >= 0, qPrintable(key.id));
     }

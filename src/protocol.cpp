@@ -148,8 +148,9 @@ int waveSpeed(int size) {
 }
 
 WaveFields waveFields(const Wave &wave, const Layout &layout) {
-    // The controller's span (docs/origins.md): x 0..4294, y 0..1075 upward.
-    constexpr int right = 4294, top = 1075, midX = 2147, midY = 538;
+    // The controller's span (docs/origins.md): x 0..4294 left to right, y 0..1075 from the
+    // F row down to the space bar.
+    constexpr int right = 4294, bottom = 1075, midX = 2147, midY = 538;
     const Wave w = normalized(wave);
     WaveFields f;
     f.speed = waveSpeed(w.size);
@@ -160,11 +161,11 @@ WaveFields waveFields(const Wave &wave, const Layout &layout) {
         f.alongX = true;
     } else if (w.origin == "top" || w.origin == "bottom") {
         f.x = midX;
-        f.y = w.origin == "bottom" ? 0 : top;
+        f.y = w.origin == "top" ? 0 : bottom;
         f.alongY = true;
         // The board is a quarter as tall as wide: slowed in proportion, a vertical wave
         // shows as many bands as a horizontal one of the same size.
-        f.speed = std::max(1, int(std::lround(f.speed * double(top) / right)));
+        f.speed = std::max(1, int(std::lround(f.speed * double(bottom) / right)));
     } else {
         const Key *key = layout.byId(w.origin);
         f.x = key && key->cx >= 0 ? key->cx : midX;
