@@ -96,3 +96,36 @@ white → black over 100, slopes encoded Keyglow's way (±40 = 255·16/100, roun
 zero). Expected if Keyglow is right: a smooth 1 s fade to white, then back, sweeping in
 from the right. Under our encoding the same cycle would be slopes ±127 and flicker
 through several wraps, so the outcome tells the two models apart without ambiguity.
+
+## Wave fields measured on the GS76 (2026-11-04)
+
+Eleven single sends from a throwaway build (base wave white → blue, 60 + 60 + 60 units,
+`aqua-3`'s packet with only the fields below changed). What the user saw:
+
+| x (0x8C) | y (0x8E) | 0x90 | 0x92 | 0x94 | 0x9A | seen |
+|---|---|---|---|---|---|---|
+| 0 | 518 | 1 | 0 | 327 | 0 | wave runs right → left |
+| 4188 | 518 | 1 | 0 | 327 | 0 | wave runs left → right |
+| 2094 | 0 | 0 | 1 | 327 | 0 | all keys in step, no wave |
+| 2094 | 1037 | 0 | 1 | 327 | 0 | all keys in step, no wave |
+| 2094 | 518 | 1 | 1 | 327 | 0 | edges → centre |
+| 2094 | 518 | 1 | 1 | 327 | 1 | centre → edges |
+| 2094 | 518 | 1 | 0 | 327 | 0 | edges → centre, same as with 0x92 = 1 |
+| 2094 | 0 | 1 | 1 | 327 | 0 | from the edges, rounded fronts |
+| 2094 | 32000 | 1 | 0 | 327 | 0 | converges right of centre, not downward |
+| 2094 | −32000 | 1 | 0 | 327 | 0 | same as 32000 |
+| 0 | 518 | 1 | 0 | 100 | 0 | right → left, narrower bands |
+
+So, on this controller:
+
+- 0x90 turns the wave on; at 0 every linked key runs the cycle in step. `aqua-0` is a
+  plain pulse, as first guessed; Keyglow's "propagate along y" reading is wrong here.
+- 0x92 makes no visible difference while 0x90 is 1.
+- The phase follows the distance to the point (0x8C, 0x8E), in both x and y: fronts are
+  circles around it, not lines.
+- 0x9A = 0 makes the wave run toward the point, 1 away from it — the reverse of
+  Keyglow's naming.
+- 0x94 is the wavelength: smaller values give narrower bands.
+- The point must stay on or near the keyboard: at |y| = 32000 the result is wrong (likely
+  an overflow in the controller), so a straight vertical wave is out of reach. Distances
+  across the board stay within x 0..4294, y 0..1037.
