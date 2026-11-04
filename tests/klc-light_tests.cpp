@@ -1608,6 +1608,91 @@ private slots:
         QVERIFY(run.log.events.isEmpty());
     }
 
+    // Every key black and steady, `applied` kept; `apply` alone turns the profile back on.
+    void cliOffSendsBlack()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        CliRun run(dir, paths);
+        QCOMPARE(run.exec({"off"}), 0);
+        int elements = 0;
+        for (const QByteArray &p : run.log.packets)
+            if (quint8(p.at(0)) == 0x0e)
+                for (int i = 0; i < quint8(p.at(2)); ++i) {
+                    QCOMPARE(p.mid(4 + i * 12, 3).toHex(), QByteArray("000000"));
+                    QCOMPARE(quint8(p.at(4 + i * 12 + 9)), quint8(1));
+                    ++elements;
+                }
+        QVERIFY(elements > 100);
+        QCOMPARE(Library(dir.path() + "/klc").applied(), QString("Tron"));
+        QVERIFY(Library(dir.path() + "/klc").off());
+
+        CliRun on(dir, paths);
+        QCOMPARE(on.exec({"apply"}), 0);
+        QCOMPARE(on.log.packets.first().mid(4, 3).toHex(), QByteArray("00f2ff"));
+        QVERIFY(!Library(dir.path() + "/klc").off());
+    }
+
+    void cliOffThenThemeTurnsOn()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        CliRun off(dir, paths);
+        QCOMPARE(off.exec({"off"}), 0);
+        QVERIFY(Library(dir.path() + "/klc").off());
+        CliRun theme(dir, paths);
+        QCOMPARE(theme.exec({"apply", "--theme"}), 0);
+        QVERIFY(!Library(dir.path() + "/klc").off());
+    }
+
+    void cliOffFakeDevice()
+    {
+        QTemporaryDir dir;
+        addProfile(dir, "Tron", "#00F2FF");
+        CliRun run(dir, fakeTheme(dir, "tron"));
+        run.env.fake = true;
+        QCOMPARE(run.exec({"off"}), 0);
+        QVERIFY(run.log.events.isEmpty());
+        QVERIFY(run.out.startsWith("F 0e"));
+        QVERIFY(!Library(dir.path() + "/klc").off());
+    }
+
+    void cliOffKeyboardAbsent()
+    {
+        QTemporaryDir dir;
+        addProfile(dir, "Tron", "#00F2FF");
+        CliRun run(dir, fakeTheme(dir, "tron"));
+        run.binder.bindOk = false;
+        run.binder.bindError = "SteelSeries KLC (1038:113a) not found";
+        QCOMPARE(run.exec({"off"}), 2);
+        QVERIFY(!Library(dir.path() + "/klc").off());
+    }
+
+    // A send that fails leaves the state as it was.
+    void cliOffSendFails()
+    {
+        QTemporaryDir dir;
+        addProfile(dir, "Tron", "#00F2FF");
+        CliRun run(dir, fakeTheme(dir, "tron"));
+        run.transport.failAt = 2;
+        QCOMPARE(run.exec({"off"}), 1);
+        QVERIFY(!Library(dir.path() + "/klc").off());
+    }
+
+    void cliOffCheck()
+    {
+        QTemporaryDir dir;
+        addProfile(dir, "Tron", "#00F2FF");
+        CliRun run(dir, fakeTheme(dir, "tron"));
+        QCOMPARE(run.exec({"off", "--check", "--json"}), 0);
+        QVERIFY(QJsonDocument::fromJson(run.out.toUtf8()).object().value("packets").toInt() > 0);
+        QVERIFY(run.log.events.isEmpty());
+        QVERIFY(!Library(dir.path() + "/klc").off());
+    }
+
     void cliNothing()
     {
         QTemporaryDir dir;

@@ -20,6 +20,10 @@ hangs on repeated sends.
 - `klc-light apply <name>` sends the library profile of that name;
   `klc-light apply <file.json>` sends a profile file (a name containing `/` or
   ending in `.json` is read as a file).
+- `klc-light off` turns every key off and remembers it; the applied profile is kept,
+  and any later `klc-light apply` (a theme switch included) turns it back on.
+- `klc-light list [--json]` prints the profiles, the applied one (`*`), each one's theme
+  link and the active theme, without touching the keyboard.
 - `klc-light apply ... --check` builds and validates without sending and prints
   `N packets OK`; add `--json` for machine-readable output
   (`{"message":"7 packets OK","ok":true,"packets":7,"source":"Tron"}`). `--json` works with sending too.
