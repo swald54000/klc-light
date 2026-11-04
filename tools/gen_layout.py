@@ -15,7 +15,8 @@ MSI_PERKEYRGB = os.path.expanduser("~/.local/share/msi-perkeyrgb")
 INPUT_CODES = "/usr/include/linux/input-event-codes.h"
 # SteelSeries GG's GE76 KLC driver (the GS76 includes it), decrypted: key positions in
 # GG's units, which scale to the controller's own wave coordinates.
-GG_LAYOUT = os.path.expanduser("~/Work/klc-re/decrypted/all/msi-ge76-klc.lisp")
+# Not redistributed: without it, the positions already in src/layoutdata.cpp are kept.
+GG_LAYOUT = os.environ.get("GG_LAYOUT", os.path.expanduser("~/Work/klc-re/decrypted/all/msi-ge76-klc.lisp"))
 
 sys.path.insert(0, MSI_PERKEYRGB)
 from msi_perkeyrgb.protocol_data.msi_keymaps import AVAILABLE_MSI_KEYMAPS  # noqa: E402
@@ -65,9 +66,22 @@ EXCLUDED = set()
 EXTRA_EVDEV = {50: 43, 100: 86, 102: 116}
 
 
+def existing_positions():
+    """HID code -> (x, y) as src/layoutdata.cpp has them, for when GG's file is absent."""
+    positions = {}
+    for line in open(os.path.join(ROOT, "src", "layoutdata.cpp")):
+        match = re.match(r'\s*\{"\w+", (\d+), Region::\w+, .*, (true|false), (-?\d+), (-?\d+)\},', line)
+        if match and int(match.group(3)) >= 0:
+            positions[int(match.group(1))] = (int(match.group(3)), int(match.group(4)))
+    return positions
+
+
 def gg_positions():
     """HID code -> (x, y) in controller units: GG's fixed positions, then the English
     variant (layout 0) for the keys GG places by layout; GG has no French variant."""
+    if not os.path.exists(GG_LAYOUT):
+        print("GG layout not found, keeping the positions in src/layoutdata.cpp")
+        return existing_positions()
     text = open(GG_LAYOUT).read()
 
     def triples(body):

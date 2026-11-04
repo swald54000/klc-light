@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Optional development tool (needs msi-perkeyrgb and msi-kbd-effect installed locally).
 # Records the packets the user's validated tools (msi-perkeyrgb and msi-kbd-effect) would
 # send, without opening any device: their HID class is replaced by a recorder. The C++
 # protocol is then compared byte for byte against these files.

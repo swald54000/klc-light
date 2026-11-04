@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "swald.klc-light",
   "name": "KLC Light",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "swald",
   "description": "Per-key keyboard lighting for MSI laptops (SteelSeries KLC), from KLC Light",
   "kinds": [

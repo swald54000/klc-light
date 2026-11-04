@@ -1,101 +1,68 @@
 # KLC Light
 
-Per-key lighting editor for the SteelSeries KLC keyboard of the MSI GS76
-(`1038:113a`), built for Omarchy: a library of named lighting profiles that
-themes can link to, key groups with their own effects, waves in eight
-directions (toward or away from any key), an on-screen preview,
-and `klc-light apply` for the theme hooks. Nothing reaches the
-keyboard until you press Apply, and each Apply sends once: this controller
-hangs on repeated sends.
+A per-key lighting editor for the keyboard of MSI laptops with a SteelSeries KLC
+controller (USB `1038:113a`), made for [Omarchy](https://omarchy.org) on Arch Linux.
+
+- A library of named lighting profiles; each can be linked to an Omarchy theme, so a
+  theme switch changes the keyboard too.
+- Key groups, each with its own steady color, pulse or wave; up to 18 animated groups,
+  all run by the keyboard's own controller (nothing keeps running on the computer).
+- Waves in eight directions, or rippling toward or away from any key; reactive keys that
+  light up when pressed.
+- An animated on-screen preview, undo and redo, and nothing sent until you press Apply.
+- A command line for scripts and hooks, and a bar widget for Omarchy's shell.
+
+## Supported hardware
+
+Tested on an **MSI GS76 Stealth** (French AZERTY keyboard). Other MSI laptops whose
+keyboard lighting controller is `1038:113a` (check with `lsusb | grep 1038:113a`) may
+work; key positions follow SteelSeries GG's GE76 family. Please open an issue with your
+model, whether it works or not.
+
+## Install
+
+```sh
+yay -S klc-light
+sudo usermod -aG klc-light $USER
+```
+
+Then log out and back in. The package adds a `klc-light` group and a udev rule that lets
+its members attach and detach the lighting controller (through the controller's own sysfs
+`authorized` file; nothing runs as root). To try the editor without touching the
+keyboard, start it with `KLC_LIGHT_FAKE_DEVICE=1 klc-light`: packets are printed instead
+of sent.
+
+### Omarchy hooks
+
+To change the lighting with the theme and restore it at boot, add two hooks:
+
+```sh
+# ~/.config/omarchy/hooks/theme-set.d/klc-light
+#!/bin/sh
+klc-light apply --theme
+
+# ~/.config/omarchy/hooks/post-boot.d/klc-light
+#!/bin/sh
+klc-light apply
+```
+
+(make both executable). A theme without a linked profile leaves the keyboard alone.
+
+### Bar widget
+
+```sh
+omarchy plugin add https://github.com/swald54000/omarchy-klc-light.git --enable
+```
+
+A keyboard icon (dimmed while the lighting is off) whose tooltip names the applied
+profile. Click it for the profile list (a click applies one), right-click to turn the
+keyboard off, middle-click to turn it back on; the panel also opens the editor. It
+follows what the editor and the hooks apply.
 
 ## Use
 
-- `klc-light` opens the editor on the profile last applied. The bar at the top
-  creates, duplicates, renames and deletes profiles, and links the open profile
-  to a theme.
-- `klc-light apply` sends the last applied profile.
-- `klc-light apply --theme` sends the profile linked to the active theme (the
-  one named in `~/.local/state/omarchy/current/theme.name`). A theme without a link
-  has nothing to send: it exits 0 and touches nothing.
-- `klc-light apply <name>` sends the library profile of that name;
-  `klc-light apply <file.json>` sends a profile file (a name containing `/` or
-  ending in `.json` is read as a file).
-- `klc-light off` turns every key off and remembers it; the applied profile is kept,
-  and any later `klc-light apply` (a theme switch included) turns it back on.
-- `klc-light list [--json]` prints the profiles, the applied one (`*`), each one's theme
-  link and the active theme, without touching the keyboard.
-- `klc-light apply ... --check` builds and validates without sending and prints
-  `N packets OK`; add `--json` for machine-readable output
-  (`{"message":"7 packets OK","ok":true,"packets":7,"source":"Tron"}`). `--json` works with sending too.
-- Exit status: 0 on success or when there is nothing to apply, 1 on any error
-  (message on stderr), 2 when the keyboard is absent from the USB bus.
-- `KLC_LIGHT_FAKE_DEVICE=1` prints the packets instead of sending them, in the editor and with `klc-light apply` alike.
-
-## Waves
-
-The base and each wave group run toward or away from an origin: the left or
-right edge, the top or bottom, the centre, or a key picked on the keyboard
-(Pick the key, then click it; Esc cancels). The size sets how fast the wave
-travels across the keys, from 1 (narrow bands) to 100. Positions are SteelSeries
-GG's own for the GE76 family, in the controller's units; `docs/origins.md`
-records how each byte was measured on the GS76.
-
-In a profile file a wave reads:
-
-```json
-"wave": { "origin": "KEY_G", "flow": "away", "size": 40 }
-```
-
-`origin` is `left`, `right`, `top`, `bottom`, `center` or a key id; `flow` is
-`toward` or `away`. Profiles from before waves had directions (`"origin":
-"aqua-N"`) are converted when read: `aqua-1` and `aqua-4` run to the right,
-`aqua-3` to the left, the others to the centre. They are written in the new
-form (profile version 3) the next time they are saved.
-
-The power key, top right, has no light of its own: its LED is wired to F1's
-output and always shows F1's color, so the editor draws it in F1's color and a
-click on it picks F1. Power keys found in older profiles or groups are dropped
-when read. The small orange light beside it is a separate indicator the
-keyboard controller does not drive.
-
-## Reactive keys
-
-The REACTIVE row turns on keys that light up when pressed: the pressed color
-lasts the chosen duration, 50 to 2000 ms (300 by default), then fades back.
-The keyboard's LED matrix leaks a little light, mostly green, into some
-neighbouring keys (pressing A in AZERTY also glows Z faintly): pressed colors
-with little green avoid it. `--experimental-reactive` is no longer needed and
-is ignored.
-
-## Omarchy bar widget
-
-`omarchy-plugin/swald.klc-light` is a bar widget for Omarchy's shell: a keyboard
-icon (dimmed while the lighting is off) whose tooltip names the applied profile.
-Click it for the profile list (a click applies one), right-click to turn the
-keyboard off, middle-click to turn it back on; the panel also opens the editor.
-It only runs `klc-light list`, `apply` and `off`, and follows `state.json`, so it
-shows what the editor and the theme hooks apply.
-
-To install it, copy the folder into `~/.config/omarchy/plugins/` (a symlink to a
-folder outside `~/.config` is not picked up), then run
-`omarchy-shell shell rescanPlugins` and `omarchy plugin enable swald.klc-light`.
-
-## Profile library
-
-Profiles are plain files in `~/.config/klc-light/profiles/<name>.klc.json`.
-`~/.config/klc-light/state.json` records which profile was applied last and
-which profile each theme is linked to. A corrupt `state.json` is moved aside as
-`state.json.bad` rather than overwritten.
-
-On first run (when `profiles/` does not exist yet) the library is migrated from the old per-theme files
-(`~/.config/omarchy/themes/<theme>/keyboard.klc.json`, else `keyboard.effect`,
-else `keyboard.rgb`, the user's copy before the stock one): each theme with lighting becomes a profile named after the
-theme and linked to it. The theme files are left untouched. With nothing to
-migrate, a `Default` profile is created.
-
-Hooks: the Omarchy `theme-set` hook should call `klc-light apply --theme` so a
-theme switch loads its linked profile, and the boot hook should call
-`klc-light apply` to restore the last applied one.
+`klc-light` opens the editor on the profile last applied. The bar at the top creates,
+duplicates, renames and deletes profiles and links the open one to a theme.
 
 | Shortcut | Action |
 |---|---|
@@ -105,8 +72,79 @@ theme switch loads its linked profile, and the boot hook should call
 | ? | Show the shortcuts |
 | Q | Quit (asks if changes are unapplied) |
 
-## Build
+### Command line
 
-`bin/test` runs the tests offscreen, `bin/build` builds, `bin/install`
-installs the package. The packet encoder is checked byte for byte against
-packets recorded from msi-perkeyrgb (`tools/gen_fixtures.py`).
+- `klc-light apply` sends the last applied profile; `--theme` sends the one linked to the
+  active Omarchy theme; `klc-light apply <name>` a library profile;
+  `klc-light apply <file.json>` a profile file.
+- `klc-light off` turns every key off and remembers it; the applied profile is kept, and
+  any later `apply` (a theme switch included) turns it back on.
+- `klc-light list` prints the profiles, `*` marking the applied one; `--json` adds each
+  one's theme link, unreadable files and the active theme.
+- `--check` builds and validates without sending (`N packets OK`); `--json` gives
+  machine-readable output, for sends too.
+- Exit status: 0 on success or when there is nothing to apply, 1 on any error (message on
+  stderr), 2 when the controller is absent from the USB bus (on the GS76 that happens after
+  a warm restart; only a full power-off brings it back).
+
+### Waves
+
+The base and each wave group run toward or away from an origin: the left or right edge,
+the top or bottom, the centre, or a key picked on the keyboard (Pick the key, then click
+it; Esc cancels). The size sets how fast the wave travels, from 1 (narrow bands) to 100.
+In a profile file:
+
+```json
+"wave": { "origin": "KEY_G", "flow": "away", "size": 40 }
+```
+
+### Reactive keys
+
+The REACTIVE row lights keys when pressed: the pressed color lasts 50 to 2000 ms (300 by
+default), then fades back.
+
+### Profile files
+
+Profiles are plain files in `~/.config/klc-light/profiles/<name>.klc.json`;
+`~/.config/klc-light/state.json` records the applied profile, whether the lighting is off
+and the theme links (a corrupt one is moved aside as `state.json.bad`). On first run, the
+old per-theme files (`~/.config/omarchy/themes/<theme>/keyboard.klc.json`, else
+`keyboard.effect`, else `keyboard.rgb`) become profiles linked to their theme; with
+nothing to migrate a `Default` profile is created. Older formats are converted when read
+and written in the current one (version 3) at the next save.
+
+## Known limits
+
+- **Power key:** its LED shows F1's color whatever is sent, so the editor draws it in F1's
+  color and a click on it picks F1. The small orange light beside it is a separate
+  indicator the controller does not drive.
+- **LED-matrix ghosting:** a lit key leaks a faint glow, mostly green, into some
+  neighbours (pressing AZERTY Q also glows A). Colors with little green avoid it.
+- **One send at a time:** the controller hangs on repeated sends, so each Apply sends once
+  and sends are spaced by a few seconds.
+- 18 animated groups at most (the controller's effect slots); 16 steps per cycle.
+
+## How it works
+
+The controller takes 524-byte HID feature reports: key tables (`0x0e`), effect slots
+(`0x0b`) and a refresh. `docs/origins.md` records how each field was measured on the GS76,
+send by send. This work builds on
+[msi-perkeyrgb](https://github.com/Askannz/msi-perkeyrgb) (the steady-color protocol and
+the captured "aqua" preset used as effect templates),
+[Keyglow](https://github.com/beylerburak/keyglow) and
+[msi-laptop-ec-protocols](https://github.com/StevenHrovat/msi-laptop-ec-protocols)
+(effect fields, measured on a GE76). Key positions and some field meanings were read from
+SteelSeries GG's device descriptions; none of its files are part of this project.
+
+## Development
+
+`bin/test` builds and runs the tests offscreen, `bin/build` builds, `bin/install` builds
+and installs the package from this tree (`pkgbuild/`). The packet encoder is checked byte
+for byte against packets recorded from msi-perkeyrgb. Optional tools: `tools/gen_layout.py`
+regenerates the key table (needs msi-perkeyrgb; without GG's GE76 file it keeps the
+positions already in `src/layoutdata.cpp`), `tools/gen_fixtures.py` records reference
+packets (needs msi-perkeyrgb).
+
+## License
+
+MIT, see `LICENSE`.
