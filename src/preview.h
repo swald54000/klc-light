@@ -7,8 +7,11 @@
 
 #include "effects.h"
 #include "profile.h"
+#include "protocol.h"
+#include <optional>
 
 class Layout;
+struct Key;
 
 // Computes what each key shows at a given time, from the same color cycles the keyboard
 // runs, so the editor can animate the profile without sending anything.
@@ -16,9 +19,6 @@ class Preview {
 public:
     // Length of one controller time unit. An estimate until compared with the keyboard.
     static constexpr int UnitMs = 10;
-    // Waves travel left to right this many milliseconds per layout pixel (about 70 ms per
-    // key); an approximation of the firmware's wave origins.
-    static constexpr double WaveMsPerUnit = 1.34;
 
     Preview(const Profile &profile, const Layout &layout);
 
@@ -27,11 +27,13 @@ public:
 private:
     struct Animated {
         EffectDef def;
-        bool wave = false;
-        double leftmost = 0;
+        std::optional<WaveFields> wave;
     };
 
     QColor cycleColor(const EffectDef &def, qint64 ms) const;
+    // How far ahead (toward) or behind (away) of the wave's point this key runs, as the
+    // controller computes it: distance along the wave's axes over the propagation speed.
+    double delayMs(const Key &key, const WaveFields &wave) const;
 
     const Layout &m_layout;
     QHash<QString, QColor> m_static;

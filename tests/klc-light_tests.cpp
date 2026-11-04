@@ -564,6 +564,45 @@ private slots:
         QVERIFY(validate(profile, Layout::gs76()).join("\n").contains("wave origin: unknown key \"HID_135\""));
     }
 
+    // A base wave white → black → white; `a` shows at t what `b` shows at t + leadMs.
+    static void expectLead(const Wave &wave, const QString &a, const QString &b, double leadMs)
+    {
+        Profile profile;
+        profile.base.type = "wave";
+        profile.base.steps = {{QColor("#FFFFFF"), 60}, {QColor("#000000"), 60}};
+        profile.base.wave = wave;
+        const Preview preview(profile, Layout::gs76());
+        for (qint64 t : {700, 900, 1100}) {
+            const QColor got = preview.colorAt(a, t), want = preview.colorAt(b, t + qRound64(leadMs));
+            QVERIFY2(qAbs(got.red() - want.red()) <= 2,
+                     qPrintable(QString("t=%1: %2 vs %3").arg(t).arg(got.name(), want.name())));
+        }
+        QVERIFY(preview.colorAt(a, 900) != preview.colorAt(b, 900));
+    }
+
+    static double distance(const QString &a, const QString &b)
+    {
+        const Key *ka = Layout::gs76().byId(a), *kb = Layout::gs76().byId(b);
+        return std::hypot(double(ka->cx - kb->cx), double(ka->cy - kb->cy));
+    }
+
+    void previewWaveTowardLeft()
+    {
+        const Layout &l = Layout::gs76();
+        const double lead = (l.byId("KEY_KPENTER")->cx - l.byId("KEY_A")->cx) * 10.0 / waveSpeed(68);
+        expectLead({"left", "toward", 68}, "KEY_KPENTER", "KEY_A", lead);
+    }
+
+    void previewWaveTowardTop()
+    {
+        expectLead({"top", "toward", 20}, "KEY_SPACE", "KEY_F5", 1075 * 10.0 / waveSpeed(20));
+    }
+
+    void previewWaveAwayFromKey()
+    {
+        expectLead({"KEY_G", "away", 40}, "KEY_G", "KEY_ESC", distance("KEY_G", "KEY_ESC") * 10.0 / waveSpeed(40));
+    }
+
     void documentRoundTrip()
     {
         Document d;
@@ -1674,7 +1713,8 @@ private slots:
         wave.wave = waveFromAqua("aqua-1");
         profile.effects = {wave};
         const Preview preview(profile, layout);
-        const qint64 delay = qint64((layout.byId("KEY_P")->x - layout.byId("KEY_Q")->x) * Preview::WaveMsPerUnit);
+        // aqua-1 runs to the right: Q, farther from the right edge, leads P.
+        const qint64 delay = qRound64((layout.byId("KEY_P")->cx - layout.byId("KEY_Q")->cx) * 10.0 / waveSpeed(68));
         QVERIFY(delay > 0);
         for (qint64 t : {100, 260, 730})
             QCOMPARE(preview.colorAt("KEY_P", t + delay), preview.colorAt("KEY_Q", t));

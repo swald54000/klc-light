@@ -1,6 +1,6 @@
 #include "preview.h"
 
-#include <limits>
+#include <cmath>
 
 #include "layout.h"
 
@@ -9,25 +9,20 @@ Preview::Preview(const Profile &profile, const Layout &layout) : m_layout(layout
     for (auto it = profile.keys.begin(); it != profile.keys.end(); ++it)
         m_static.insert(it.key(), scaled(EffectDef{it.value(), {}, 1, {}}, profile.brightness, 100).start);
 
-    auto leftmost = [&layout](const QStringList &ids) {
-        double x = std::numeric_limits<double>::max();
-        for (const QString &id : ids)
-            if (const Key *key = layout.byId(id); key && key->visible)
-                x = std::min(x, key->x);
-        return x == std::numeric_limits<double>::max() ? 0.0 : x;
+    auto wave = [&layout](const EffectDef &def) {
+        return def.wave ? std::optional<WaveFields>(waveFields(*def.wave, layout)) : std::nullopt;
     };
 
     if (profile.base.type != "static") {
         m_baseSlot = 0;
-        const bool wave = baseEffect(profile.base).wave.has_value();
-        m_animated.append({scaled(baseEffect(profile.base), profile.brightness, profile.speed), wave,
-                           leftmost(layout.group("all"))});
+        const EffectDef def = baseEffect(profile.base);
+        m_animated.append({scaled(def, profile.brightness, profile.speed), wave(def)});
     }
     for (const EffectLayer &layer : profile.effects) {
         for (const QString &id : layer.keys)
             m_slotOfKey.insert(id, m_animated.size());
-        m_animated.append({scaled(layerEffect(layer), profile.brightness, profile.speed), layerEffect(layer).wave.has_value(),
-                           leftmost(layer.keys)});
+        const EffectDef def = layerEffect(layer);
+        m_animated.append({scaled(def, profile.brightness, profile.speed), wave(def)});
     }
 }
 
@@ -71,9 +66,17 @@ QColor Preview::colorAt(const QString &keyId, qint64 ms) const {
     if (slot < 0)
         return m_base;
     const Animated &animated = m_animated[slot];
-    qint64 delay = 0;
+    qint64 offset = 0;
     if (animated.wave)
         if (const Key *key = m_layout.byId(keyId))
-            delay = qint64((key->x - animated.leftmost) * WaveMsPerUnit);
-    return cycleColor(animated.def, ms - delay);
+            offset = qRound64(delayMs(*key, *animated.wave));
+    return cycleColor(animated.def, ms + offset);
+}
+
+double Preview::delayMs(const Key &key, const WaveFields &wave) const {
+    if (key.cx < 0 || wave.speed <= 0)
+        return 0;
+    const double dx = wave.alongX ? key.cx - wave.x : 0, dy = wave.alongY ? key.cy - wave.y : 0;
+    const double lead = std::hypot(dx, dy) * UnitMs / wave.speed;
+    return wave.away ? -lead : lead;
 }
