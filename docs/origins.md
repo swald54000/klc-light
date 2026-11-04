@@ -151,3 +151,21 @@ slots `effect_0` … `effect_18`, beyond the 6 we use.
 Two more sends (2026-11-04), vertical (0x90 = 0, 0x92 = 1) at the slowest speed, 31,
 origin at the top then the bottom: rows alternate light and dark blue in both, so the
 controller does know each key's height; at 327 that lag was too small to see.
+
+## Key packets and the power key (2026-11-04)
+
+Byte 2 of a `0x0e` key packet is not a region id but the number of key elements in the
+packet, as GG's `key_illumination_block_*` structs name it (`length`): 0x2A = 42, 0x24 =
+36, 0x18 = 24, 0x0B = 11, which is exactly how many keys each captured packet holds.
+
+The GS76 inherits GG's `msi-ge76-klc`, whose notes list "a 'power' key on the top-right
+corner", HID 0x66, absent from msi-perkeyrgb's lists and from the GS75 `aqua` capture.
+Sent as a 12th element of the 11-key packet (byte 2 = 0x0C), with the rest steady cyan:
+red showed orange, blue showed blue — the key has a full RGB LED. A small orange light
+stays beside it in both cases: a separate indicator, not on the KLC (neither msi-ec nor
+the kernel LED class exposes it).
+
+GG also gives each GE76 key's position (`get-prism-sync-nonvariant-hid-info`, x 140..807,
+y 89..256, y growing upward: the space bar is at 89, the F row at 256; power at 807, 256).
+Scaled by 4294 / 667 ≈ 6.44 in both axes, that span is 4294 × 1075, the controller's own
+range: these are very likely its units, up to an offset.
