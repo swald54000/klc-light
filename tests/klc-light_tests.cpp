@@ -240,10 +240,6 @@ private slots:
             QVERIFY2(aqua.contains(key.hid) || key.id == "KEY_POWER", qPrintable(key.id));
         QCOMPARE(int(layout.byId("KEY_Q")->hid), 0x14);
         QCOMPARE(layout.byHid(0x14)->id, QString("KEY_Q"));
-        QCOMPARE(regionCode(Region::Alphanum), quint8(0x2a));
-        QCOMPARE(regionCode(Region::Enter), quint8(0x0b));
-        QCOMPARE(regionCode(Region::Modifiers), quint8(0x18));
-        QCOMPARE(regionCode(Region::Numpad), quint8(0x24));
     }
 
     void layoutGroups()
@@ -751,6 +747,53 @@ private slots:
         const QByteArray first = result.packets.first().data;
         const QByteArray fragment = first.mid(4, 12);
         QCOMPARE(fragment.toHex(' '), QByteArray("10 20 30 a0 b0 c0 23 01 00 08 00 04"));
+    }
+
+    // The power key rides as a twelfth element of the 11-key packet, whose byte 2 counts them.
+    static QByteArray powerPacket(const BuildResult &result)
+    {
+        for (const Packet &packet : result.packets)
+            if (quint8(packet.data.at(0)) == 0x0e && quint8(packet.data.at(2)) == 0x0c)
+                return packet.data;
+        return {};
+    }
+
+    void protocolPowerStatic()
+    {
+        Profile profile;
+        profile.base.color = QColor("#00E5FF");
+        profile.keys.insert("KEY_POWER", QColor("#FF0000"));
+        const BuildResult result = buildPackets(profile, Layout::gs76());
+        QVERIFY2(result.errors.isEmpty(), qPrintable(result.errors.join("; ")));
+        const QByteArray packet = powerPacket(result);
+        QVERIFY(!packet.isEmpty());
+        QCOMPARE(packet.mid(4 + 11 * 12, 12).toHex(' '), QByteArray("ff 00 00 00 00 00 00 00 00 01 00 66"));
+        QList<quint8> counts;
+        for (const Packet &p : result.packets)
+            if (quint8(p.data.at(0)) == 0x0e)
+                counts.append(quint8(p.data.at(2)));
+        QCOMPARE(counts, QList<quint8>({0x2a, 0x0c, 0x18, 0x24}));
+    }
+
+    void protocolPowerAnimated()
+    {
+        Profile profile;
+        profile.base.type = "wave";
+        profile.base.steps = {{QColor("#00E5FF"), 40}, {QColor("#0A27D3"), 40}};
+        profile.base.origin = "aqua-1";
+        const BuildResult result = buildPackets(profile, Layout::gs76());
+        QVERIFY2(result.errors.isEmpty(), qPrintable(result.errors.join("; ")));
+        const QByteArray element = powerPacket(result).mid(4 + 11 * 12, 12);
+        QCOMPARE(element.toHex(' '), QByteArray("00 00 00 00 00 00 00 00 00 00 00 66"));
+    }
+
+    void protocolPowerReactive()
+    {
+        Profile profile;
+        profile.base.color = QColor("#102030");
+        profile.reactive = {true, QColor("#A0B0C0"), 0x0123};
+        const BuildResult result = buildPackets(profile, Layout::gs76(), true);
+        QCOMPARE(powerPacket(result).mid(4 + 11 * 12, 12).toHex(' '), QByteArray("10 20 30 a0 b0 c0 23 01 00 08 00 66"));
     }
 
     void protocolSizes()
@@ -3413,6 +3456,13 @@ private:
                 want.replace(0x02, 0x80, got.mid(0x02, 0x80));
                 want.replace(0x98, 2, got.mid(0x98, 2));
             }
+            // Key packets: msi-perkeyrgb leaves a code-0 filler element and counts 11 keys
+            // where we send the power key as a twelfth. Compare the header, every real key
+            // element but power, and the trailer.
+            if (quint8(want.at(0)) == 0x0e && got.size() == want.size()) {
+                QCOMPARE(keyElements(got, true), keyElements(want, false));
+                continue;
+            }
             if (got != want) {
                 int at = 0;
                 while (at < qMin(got.size(), want.size()) && got[at] == want[at])
@@ -3422,6 +3472,20 @@ private:
                                      .arg(QString(got.mid(at, 12).toHex(' ')), QString(want.mid(at, 12).toHex(' ')))));
             }
         }
+    }
+
+    // A key packet without its count byte: header, the elements of real keys (the power key
+    // dropped when asked), trailer.
+    static QByteArray keyElements(const QByteArray &packet, bool dropPower)
+    {
+        QByteArray out = packet.left(2) + packet.mid(3, 1);
+        for (int i = 0; i < 42; ++i) {
+            const QByteArray element = packet.mid(4 + i * 12, 12);
+            const quint8 hid = quint8(element.at(11));
+            if (hid != 0 && !(dropPower && hid == 0x66))
+                out += element;
+        }
+        return out + packet.mid(508);
     }
 
     // Reads a fixture written by tools/gen_fixtures.py: one "F <hex>" or "O <hex>" per packet.

@@ -2,16 +2,6 @@
 
 #include "layoutdata.h"
 
-quint8 regionCode(Region region) {
-    switch (region) {
-    case Region::Alphanum: return 0x2a;
-    case Region::Enter: return 0x0b;
-    case Region::Modifiers: return 0x18;
-    case Region::Numpad: return 0x24;
-    }
-    return 0;
-}
-
 const Layout &Layout::gs76() {
     static const Layout layout;
     return layout;

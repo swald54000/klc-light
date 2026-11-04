@@ -18,6 +18,10 @@ constexpr int kFragmentsPerRegion = 42;
 
 enum : quint8 { kMaskEffect = 0, kMaskSteady = 1, kMaskReactive = 8 };
 
+// The power key is in none of msi-perkeyrgb's packets nor the captured preset; it is sent
+// as a twelfth element of the 11-key packet, which the controller accepts.
+constexpr quint8 kPowerHid = 0x66;
+
 // The captured "aqua" preset of msi-perkeyrgb, the only effect packets validated on this
 // firmware; new effects reuse its packets and change only the color cycle.
 const QList<QByteArray> &aquaPackets() {
@@ -100,10 +104,12 @@ QByteArray effectPacket(const QByteArray &templatePacket, int slot, const Effect
     return packet;
 }
 
-QByteArray regionPacket(Region region, const QList<QByteArray> &fragments, bool staticTrailer) {
+// Byte 2 counts the key elements that follow (GG's `length`): 42, 11, 24 and 36 in the
+// captured packets, 12 once the power key rides with the 11.
+QByteArray regionPacket(const QList<QByteArray> &fragments, bool staticTrailer) {
     QByteArray packet(4, '\0');
     packet[0] = 0x0e;
-    packet[2] = char(regionCode(region));
+    packet[2] = char(fragments.size());
     for (const QByteArray &f : fragments)
         packet += f;
     packet += QByteArray(12 * (kFragmentsPerRegion - fragments.size()), '\0');
@@ -166,13 +172,17 @@ BuildResult buildPackets(const Profile &profile, const Layout &layout, bool allo
         for (Region region : regions) {
             QList<QByteArray> fragments;
             QSet<quint8> seen;
-            // The region lists repeat some codes as padding; msi-perkeyrgb writes each once.
+            // The region lists repeat some codes as padding; msi-perkeyrgb writes each once,
+            // with a code-0 filler past the counted elements. Only real keys are written here,
+            // so byte 2 counts exactly the elements the controller reads.
             for (quint8 hid : layout.regionHids(region))
-                if (!seen.contains(hid)) {
+                if (hid != 0 && !seen.contains(hid)) {
                     seen.insert(hid);
                     fragments.append(fragment(keyColor(hid), reactive, 0, steadyMask, hid));
                 }
-            result.packets.append({Packet::Feature, regionPacket(region, fragments, true)});
+            if (region == Region::Enter)
+                fragments.append(fragment(keyColor(kPowerHid), reactive, 0, steadyMask, kPowerHid));
+            result.packets.append({Packet::Feature, regionPacket(fragments, true)});
         }
         result.packets.append(outputRefresh());
         return result;
@@ -180,13 +190,16 @@ BuildResult buildPackets(const Profile &profile, const Layout &layout, bool allo
 
     auto region = [&](Region r) {
         QList<QByteArray> fragments;
-        for (quint8 hid : layout.aquaHids(r)) {
+        QList<quint8> hids = layout.aquaHids(r);
+        if (r == Region::Enter)
+            hids.append(kPowerHid);
+        for (quint8 hid : hids) {
             if (slotOfHid.contains(hid))
                 fragments.append(fragment(Qt::black, nullptr, quint8(slotOfHid.value(hid)), kMaskEffect, hid));
             else
                 fragments.append(fragment(keyColor(hid), reactive, 0, steadyMask, hid));
         }
-        return Packet{Packet::Feature, regionPacket(r, fragments, false)};
+        return Packet{Packet::Feature, regionPacket(fragments, false)};
     };
 
     result.packets.append(region(Region::Enter));

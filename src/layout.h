@@ -8,8 +8,6 @@
 // The four lighting regions of the KLC; each takes one 42-key packet.
 enum class Region { Alphanum, Enter, Modifiers, Numpad };
 
-quint8 regionCode(Region region);
-
 struct Key {
     QString id;   // Linux input name of the physical key, e.g. "KEY_Q".
     quint8 hid;   // USB HID usage the controller addresses the key by.
