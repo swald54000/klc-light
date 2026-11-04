@@ -611,14 +611,7 @@ void Backend::setReactiveEnabled(bool enabled) {
 }
 
 void Backend::setReactiveDuration(int duration) {
-    edit([&](Document &d) { d.reactive.duration = std::clamp(duration, 0, 2000); });
-}
-
-void Backend::setExperimentalReactive(bool enabled) {
-    if (enabled == m_experimentalReactive)
-        return;
-    m_experimentalReactive = enabled;
-    emit profileChanged();
+    edit([&](Document &d) { d.reactive.duration = std::clamp(duration, 50, 2000); });
 }
 
 QColor Backend::previewColor(const QString &id, qint64 ms) const {
@@ -631,7 +624,7 @@ void Backend::apply() {
     QStringList errors = validate(m_doc, Layout::gs76());
     BuildResult built;
     if (errors.isEmpty()) {
-        built = buildPackets(lighting(m_doc), Layout::gs76(), m_experimentalReactive);
+        built = buildPackets(lighting(m_doc), Layout::gs76());
         errors = built.errors;
     }
     if (!errors.isEmpty()) {

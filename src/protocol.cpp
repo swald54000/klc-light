@@ -172,13 +172,13 @@ WaveFields waveFields(const Wave &wave, const Layout &layout) {
     return f;
 }
 
-BuildResult buildPackets(const Profile &profile, const Layout &layout, bool allowReactive) {
+BuildResult buildPackets(const Profile &profile, const Layout &layout) {
     BuildResult result;
     result.errors = validate(profile, layout);
     if (!result.errors.isEmpty())
         return result;
 
-    const Reactive *reactive = allowReactive && profile.reactive.enabled ? &profile.reactive : nullptr;
+    const Reactive *reactive = profile.reactive.enabled ? &profile.reactive : nullptr;
     const quint8 steadyMask = reactive ? kMaskReactive : kMaskSteady;
     auto keyColor = [&](quint8 hid) {
         const Key *key = layout.byHid(hid);

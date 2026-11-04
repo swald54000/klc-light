@@ -923,16 +923,34 @@ private slots:
         compareWithFixture(buildPackets(builtinProfile("tron"), Layout::gs76()), "tron.hex", SkipTransitions);
     }
 
-    void protocolNoReactiveByDefault()
+    // Reactive lighting works on the GS76 (durations in milliseconds): it is sent whenever
+    // the profile enables it.
+    void protocolReactiveSent()
     {
         Profile profile;
         profile.reactive.enabled = true;
         const BuildResult result = buildPackets(profile, Layout::gs76());
         QVERIFY(result.errors.isEmpty());
+        int reactive = 0;
         for (const Packet &packet : result.packets)
             if (packet.kind == Packet::Feature && quint8(packet.data.at(0)) == 0x0e)
-                for (int i = 0; i < 42; ++i)
-                    QVERIFY(quint8(packet.data.at(4 + i * 12 + 9)) != 8);
+                for (int i = 0; i < quint8(packet.data.at(2)); ++i)
+                    reactive += quint8(packet.data.at(4 + i * 12 + 9)) == 8;
+        QVERIFY(reactive > 100);
+    }
+
+    void profileReactiveDefaultDuration()
+    {
+        QCOMPARE(Reactive{}.duration, 300);
+        const QByteArray json = R"({
+          "version": 1, "brightness": 100, "speed": 100,
+          "base": { "type": "static", "color": "#000000" },
+          "reactive": { "enabled": true, "color": "#FFFFFF" }
+        })";
+        QStringList errors;
+        const auto profile = profileFromJson(QJsonDocument::fromJson(json).object(), &errors);
+        QVERIFY2(profile, qPrintable(errors.join("; ")));
+        QCOMPARE(profile->reactive.duration, 300);
     }
 
     void protocolReactiveAllowed()
@@ -940,7 +958,7 @@ private slots:
         Profile profile;
         profile.base.color = QColor("#102030");
         profile.reactive = {true, QColor("#A0B0C0"), 0x0123};
-        const BuildResult result = buildPackets(profile, Layout::gs76(), true);
+        const BuildResult result = buildPackets(profile, Layout::gs76());
         const QByteArray first = result.packets.first().data;
         const QByteArray fragment = first.mid(4, 12);
         QCOMPARE(fragment.toHex(' '), QByteArray("10 20 30 a0 b0 c0 23 01 00 08 00 04"));
@@ -1491,6 +1509,27 @@ private slots:
         QVERIFY(Library(dir.path() + "/klc").applied() != QString("Tokyo"));
     }
 
+    // --experimental-reactive was needed before reactive lighting was validated; it is still
+    // accepted, and no longer needed.
+    void cliReactiveWithoutFlag()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tokyo-night");
+        addProfile(dir, "Tokyo", "#7aa2f7", "tokyo-night");
+        Library lib(dir.path() + "/klc");
+        QStringList errors;
+        auto doc = lib.load("Tokyo", &errors);
+        QVERIFY2(doc, qPrintable(errors.join("; ")));
+        doc->reactive.enabled = true;
+        QString error;
+        QVERIFY2(lib.save(*doc, &error), qPrintable(error));
+        for (const QStringList &args : {QStringList{"apply", "--theme"}, QStringList{"apply", "--theme", "--experimental-reactive"}}) {
+            CliRun run(dir, paths);
+            QCOMPARE(run.exec(args), 0);
+            QCOMPARE(quint8(run.log.packets.first().at(4 + 9)), quint8(8));
+        }
+    }
+
     void cliNothing()
     {
         QTemporaryDir dir;
@@ -1731,6 +1770,16 @@ private slots:
     {
         backend->select(keys, false);
         QCOMPARE(backend->createGroup(name), QString());
+    }
+
+    void backendReactiveDurationClamped()
+    {
+        EditorRun run;
+        run.backend->openReactive();
+        run.backend->setReactiveDuration(10);
+        QCOMPARE(run.backend->document().reactive.duration, 50);
+        run.backend->setReactiveDuration(5000);
+        QCOMPARE(run.backend->document().reactive.duration, 2000);
     }
 
     void backendSelectPowerSelectsF1()
@@ -3101,6 +3150,18 @@ private slots:
         QTRY_COMPARE(name->property("text").toString(), QString("ZQSD"));
         QQuickItem *behavior = findItem(ui.window->contentItem(), "behaviorBox");
         QVERIFY(behavior && behavior->isVisible());
+    }
+
+    void uiReactiveDurationSlider()
+    {
+        Ui ui;
+        ui.run.backend->openReactive();
+        QQuickItem *slider = nullptr;
+        QTRY_VERIFY((slider = findItem(ui.window->contentItem(), "reactiveDurationSlider")) && slider->isVisible());
+        QCOMPARE(slider->property("from").toInt(), 50);
+        QCOMPARE(slider->property("to").toInt(), 2000);
+        QQuickItem *toggle = findItem(ui.window->contentItem(), "reactiveSwitch");
+        QVERIFY(toggle && toggle->isEnabled());
     }
 
     void uiWaveDirectionChoices()

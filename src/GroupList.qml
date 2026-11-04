@@ -153,8 +153,7 @@ ColumnLayout {
         topPadding: 0
         bottomPadding: 0
         highlighted: backend.currentKind === "reactive"
-        text: qsTr("REACTIVE (experimental)")
-        opacity: backend.experimentalReactive ? 1 : 0.6
+        text: qsTr("REACTIVE")
         onClicked: backend.openReactive()
     }
 }

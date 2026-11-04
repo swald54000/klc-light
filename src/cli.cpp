@@ -34,10 +34,10 @@ int finish(CliEnv &env, bool json, bool ok, const QString &message, int packets 
 
 int runCli(const QStringList &args, CliEnv &env) {
     if (args.value(0) != "apply") {
-        *env.err << "usage: klc-light [open] | klc-light apply [<name> | <file.json>] [--theme] [--check] [--json] [--experimental-reactive]\n";
+        *env.err << "usage: klc-light [open] | klc-light apply [<name> | <file.json>] [--theme] [--check] [--json]\n";
         return 1;
     }
-    bool check = false, json = false, reactive = false;
+    bool check = false, json = false;
     QString target;
     bool theme = false;
     for (const QString &arg : args.mid(1)) {
@@ -48,7 +48,7 @@ int runCli(const QStringList &args, CliEnv &env) {
         else if (arg == "--theme")
             theme = true;
         else if (arg == "--experimental-reactive")
-            reactive = true;
+            ; // Needed before reactive lighting was validated; still accepted, now a no-op.
         else if (arg.startsWith("--"))
             return finish(env, json, false, QString("unknown option %1").arg(arg));
         else
@@ -92,7 +92,7 @@ int runCli(const QStringList &args, CliEnv &env) {
             }
         }
         if (built.errors.isEmpty() && profile)
-            built = buildPackets(*profile, Layout::gs76(), reactive);
+            built = buildPackets(*profile, Layout::gs76());
         return built;
     };
 

@@ -46,7 +46,6 @@ class Backend : public QObject {
     Q_PROPERTY(int cooldownMs READ cooldownMs NOTIFY cooldownChanged)
     Q_PROPERTY(QString error READ error NOTIFY errorChanged)
     Q_PROPERTY(QString notice READ notice NOTIFY errorChanged)
-    Q_PROPERTY(bool experimentalReactive READ experimentalReactive WRITE setExperimentalReactive NOTIFY profileChanged)
     Q_PROPERTY(QStringList savedColors READ savedColors NOTIFY savedColorsChanged)
     // The next click on a key sets the open wave's origin instead of selecting it.
     Q_PROPERTY(bool picking READ picking NOTIFY pickingChanged)
@@ -87,8 +86,6 @@ public:
     int cooldownMs() const { return m_cooldownMs; }
     QString error() const { return m_error; }
     QString notice() const { return m_notice; }
-    bool experimentalReactive() const { return m_experimentalReactive; }
-    void setExperimentalReactive(bool enabled);
     bool picking() const { return m_picking; }
     QStringList savedColors() const { return m_savedColors; }
     const Document &document() const { return m_doc; }
@@ -208,7 +205,6 @@ private:
     int m_revision = 0;
     bool m_dirty = false;
     bool m_busy = false;
-    bool m_experimentalReactive = false;
     int m_cooldownMs = 0;
     QString m_error, m_notice;
     QString m_sending; // the profile being sent, applied once the send works

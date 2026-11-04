@@ -209,3 +209,23 @@ else black (power red as element 0x66, groups of keys set to green) found the ca
 The power key's LED is driven by F1's output; code 0x66 adds to it and also lights
 keypad 3. klc-light therefore sends no power element (the 11-key packet is back to
 11) and treats the power key as F1's twin: drawn in F1's color, selecting F1.
+
+## Reactive keys (2026-11-04)
+
+Measured with a different reactive duration per row (50, 150, 400, 1000, 2000): the
+pressed color lasts about that many **milliseconds**, as msi-perkeyrgb's effectdoc says
+(the vendor uses 100–1000) and GG's `reactive_lighting.time` (0..2000) implies.
+
+Pressing some keys also lights a neighbour briefly: AZERTY Q, S, D light A, Z, E; R, T, Y
+light 9, 0, ). With a pressed color per row, the neighbour shows only the **green** part:
+a blue pressed color shows no neighbour at all, yellow or white show green. Emptying the
+nine effect slots first, or linking reactive keys to an unused effect id (17), changes
+nothing. A static send with only AZERTY Q and R green also glows A and 9 faintly: it is
+ghosting in the keyboard's LED matrix, strongest on green (the lowest forward voltage),
+not something the packets cause. GG sends the same reactive elements (mask 8).
+
+Other projects' notes used here: msi-perkeyrgb's effectdoc (reactive duration in ms,
+"effect id appears random in reactive"), StevenHrovat/msi-laptop-ec-protocols (GE76
+measurements: slopes per 10 ms tick, 0x9A = 0 toward the origin, a `0x0C` per-key
+overlay that lights the power key by its own id 0x66, the latch law for running slots),
+OpenRGB's SteelSeries ApS branch (layout query `0x10`, free-order `0x0E` packets).

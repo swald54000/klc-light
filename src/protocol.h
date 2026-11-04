@@ -20,9 +20,8 @@ struct BuildResult {
 };
 
 // Every packet that shows the profile on the KLC, in send order. Nothing is sent if
-// `errors` is not empty. Reactive lighting stays off unless explicitly allowed, since it
-// has not been validated on this keyboard's firmware.
-BuildResult buildPackets(const Profile &profile, const Layout &layout, bool allowReactive = false);
+// `errors` is not empty.
+BuildResult buildPackets(const Profile &profile, const Layout &layout);
 
 // What a wave tells the controller (effect packet 0x8C..0x95, 0x9A), as SteelSeries GG
 // encodes it: a point in the controller's units, the axes the distance is measured along

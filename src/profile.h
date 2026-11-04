@@ -59,7 +59,7 @@ struct BaseLayer {
 struct Reactive {
     bool enabled = false;
     QColor color = Qt::white;
-    int duration = 30;
+    int duration = 300; // milliseconds the pressed color lasts (GG and msi-perkeyrgb: ms)
 };
 
 struct Profile {

@@ -308,22 +308,31 @@ GridLayout {
             Layout.fillWidth: true
             visible: panel.kind === "reactive"
             Switch {
-                text: qsTr("Experimental: send reactive lighting")
-                checked: backend.experimentalReactive
-                onToggled: backend.experimentalReactive = checked
-            }
-            Switch {
+                objectName: "reactiveSwitch"
                 text: qsTr("Light keys when pressed")
-                enabled: backend.experimentalReactive
                 checked: panel.cur.enabled === true
                 onToggled: backend.setReactiveEnabled(checked)
+            }
+            Label {
+                text: qsTr("Duration: %1 ms").arg(panel.cur.duration || 300)
+                font.pixelSize: 11
+                opacity: 0.6
+            }
+            Slider {
+                objectName: "reactiveDurationSlider"
+                Layout.fillWidth: true
+                from: 50; to: 2000; stepSize: 10
+                value: panel.cur.duration || 300
+                onPressedChanged: pressed ? backend.beginGesture() : backend.endGesture()
+                onMoved: backend.setReactiveDuration(value)
             }
             Label {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 font.pixelSize: 11
                 opacity: 0.6
-                text: qsTr("Not yet validated on this keyboard's firmware.")
+                // The keyboard's LED matrix leaks some green into a neighbouring key (measured).
+                text: qsTr("Colors with little green avoid a faint glow on a neighbouring key.")
             }
         }
 

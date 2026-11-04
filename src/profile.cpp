@@ -215,7 +215,7 @@ std::optional<Profile> profileFromJson(const QJsonObject &object, QStringList *e
 
     const QJsonObject reactive = object.value("reactive").toObject();
     profile.reactive.enabled = reactive.value("enabled").toBool(false);
-    profile.reactive.duration = reactive.value("duration").toInt(30);
+    profile.reactive.duration = reactive.value("duration").toInt(300);
     if (reactive.contains("color"))
         if (const auto color = parseColor(reactive.value("color"), "reactive", &problems))
             profile.reactive.color = *color;

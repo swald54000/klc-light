@@ -54,6 +54,15 @@ click on it picks F1. Power keys found in older profiles or groups are dropped
 when read. The small orange light beside it is a separate indicator the
 keyboard controller does not drive.
 
+## Reactive keys
+
+The REACTIVE row turns on keys that light up when pressed: the pressed color
+lasts the chosen duration, 50 to 2000 ms (300 by default), then fades back.
+The keyboard's LED matrix leaks a little light, mostly green, into some
+neighbouring keys (pressing A in AZERTY also glows Z faintly): pressed colors
+with little green avoid it. `--experimental-reactive` is no longer needed and
+is ignored.
+
 ## Profile library
 
 Profiles are plain files in `~/.config/klc-light/profiles/<name>.klc.json`.
