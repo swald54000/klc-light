@@ -22,6 +22,7 @@ QString symbolLabel(xkb_keysym_t sym) {
         {XKB_KEY_Home, "Home"}, {XKB_KEY_End, "End"}, {XKB_KEY_Prior, "PgUp"}, {XKB_KEY_Next, "PgDn"},
         {XKB_KEY_Print, "PrtSc"}, {XKB_KEY_Num_Lock, "Num"}, {XKB_KEY_Menu, "Menu"},
         {XKB_KEY_Scroll_Lock, "ScrLk"}, {XKB_KEY_Pause, "Pause"}, {XKB_KEY_XF86Fn, "Fn"},
+        {XKB_KEY_XF86PowerOff, "⏻"},
         // Dead keys print nothing on their own; show the accent they add.
         {XKB_KEY_dead_circumflex, "^"}, {XKB_KEY_dead_diaeresis, "¨"}, {XKB_KEY_dead_grave, "`"},
         {XKB_KEY_dead_acute, "´"}, {XKB_KEY_dead_tilde, "~"},

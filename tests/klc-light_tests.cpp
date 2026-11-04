@@ -263,6 +263,8 @@ private slots:
         QCOMPARE(fr.label(*layout.byId("KEY_LEFTBRACE")), QString("^"));
         QCOMPARE(fr.label(*layout.byId("KEY_SCROLLLOCK")), QString("ScrLk"));
         QCOMPARE(fr.label(*layout.byId("KEY_FN")), QString("Fn"));
+        // The usual power symbol, a circle broken by a bar (U+23FB), not the keysym's name.
+        QCOMPARE(fr.label(*layout.byId("KEY_POWER")), QString::fromUtf8("\u23FB"));
         QCOMPARE(fr.label(*layout.byId("KEY_BACKSLASH")), QString("*"));
         QCOMPARE(fr.label(*layout.byId("KEY_102ND")), QString("<"));
         QCOMPARE(fr.label(*layout.byId("KEY_KP7")), QString("7"));
