@@ -1,5 +1,8 @@
 #include "protocol.h"
 
+#include <algorithm>
+#include <cmath>
+
 #include <QFile>
 #include <QHash>
 #include <QJsonArray>
@@ -74,10 +77,24 @@ QByteArray encodeColor(int value) {
     return bytes;
 }
 
+void putU16(QByteArray &packet, int at, int value) {
+    packet[at] = char(value & 0xFF);
+    packet[at + 1] = char((value >> 8) & 0xFF);
+}
+
 QByteArray effectPacket(const QByteArray &templatePacket, int slot, const EffectDef &def,
-                        const QList<Transition> &table) {
+                        const QList<Transition> &table, const Layout &layout) {
     QByteArray packet = templatePacket;
     packet[2] = char(slot);
+    if (def.wave) {
+        const WaveFields f = waveFields(*def.wave, layout);
+        putU16(packet, 0x8c, f.x);
+        putU16(packet, 0x8e, f.y);
+        putU16(packet, 0x90, f.alongX ? 1 : 0);
+        putU16(packet, 0x92, f.alongY ? 1 : 0);
+        putU16(packet, 0x94, f.speed);
+        packet[0x9a] = char(f.away ? 1 : 0);
+    }
     QByteArray entries(16 * 8, '\0');
     int total = 0;
     for (int i = 0; i < table.size(); ++i) {
@@ -125,6 +142,34 @@ Packet outputRefresh() {
 }
 
 } // namespace
+
+int waveSpeed(int size) {
+    return int(std::lround(31.0 * std::pow(1001.0 / 31.0, (std::clamp(size, 1, 100) - 1) / 99.0)));
+}
+
+WaveFields waveFields(const Wave &wave, const Layout &layout) {
+    // The controller's span (docs/origins.md): x 0..4294, y 0..1075 upward.
+    constexpr int right = 4294, top = 1075, midX = 2147, midY = 538;
+    const Wave w = normalized(wave);
+    WaveFields f;
+    f.speed = waveSpeed(w.size);
+    f.away = w.flow == "away";
+    if (w.origin == "left" || w.origin == "right") {
+        f.x = w.origin == "left" ? 0 : right;
+        f.y = midY;
+        f.alongX = true;
+    } else if (w.origin == "top" || w.origin == "bottom") {
+        f.x = midX;
+        f.y = w.origin == "bottom" ? 0 : top;
+        f.alongY = true;
+    } else {
+        const Key *key = layout.byId(w.origin);
+        f.x = key && key->cx >= 0 ? key->cx : midX;
+        f.y = key && key->cy >= 0 ? key->cy : midY;
+        f.alongX = f.alongY = true;
+    }
+    return f;
+}
 
 BuildResult buildPackets(const Profile &profile, const Layout &layout, bool allowReactive) {
     BuildResult result;
@@ -214,7 +259,7 @@ BuildResult buildPackets(const Profile &profile, const Layout &layout, bool allo
             result.errors.append(QString("%1: %2").arg(name, error.isEmpty() ? "unknown origin" : error));
             continue;
         }
-        result.packets.append({Packet::Feature, effectPacket(templatePacket, slot, def, table)});
+        result.packets.append({Packet::Feature, effectPacket(templatePacket, slot, def, table, layout)});
     }
     result.packets.append(region(Region::Alphanum));
     result.packets.append(region(Region::Numpad));

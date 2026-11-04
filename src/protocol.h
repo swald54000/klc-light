@@ -24,6 +24,21 @@ struct BuildResult {
 // has not been validated on this keyboard's firmware.
 BuildResult buildPackets(const Profile &profile, const Layout &layout, bool allowReactive = false);
 
+// What a wave tells the controller (effect packet 0x8C..0x95, 0x9A), as SteelSeries GG
+// encodes it: a point in the controller's units, the axes the distance is measured along
+// (x only: horizontal, y only: vertical, both: radial), the propagation speed and whether
+// the wave runs away from the point rather than toward it.
+struct WaveFields {
+    int x = 0, y = 0;
+    bool alongX = false, alongY = false;
+    int speed = 0;
+    bool away = false;
+};
+
+WaveFields waveFields(const Wave &wave, const Layout &layout);
+// Size 1..100 to GG's propagation speed 31..1001, on a log scale (68 → 326).
+int waveSpeed(int size);
+
 // The "ares" and "tron" effects of msi-kbd-effect, on the captured aqua key mapping.
 Profile builtinProfile(const QString &name);
 // A profile from the older theme files: keyboard.effect names a built-in effect,

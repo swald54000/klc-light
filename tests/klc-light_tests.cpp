@@ -922,6 +922,96 @@ private slots:
         QCOMPARE(powerPacket(result).mid(4 + 11 * 12, 12).toHex(' '), QByteArray("10 20 30 a0 b0 c0 23 01 00 08 00 66"));
     }
 
+    void protocolWaveSpeed()
+    {
+        QCOMPARE(waveSpeed(1), 31);
+        QCOMPARE(waveSpeed(68), 326);
+        QCOMPARE(waveSpeed(100), 1001);
+    }
+
+    void protocolWaveFields_data()
+    {
+        QTest::addColumn<QString>("origin");
+        QTest::addColumn<int>("x");
+        QTest::addColumn<int>("y");
+        QTest::addColumn<bool>("alongX");
+        QTest::addColumn<bool>("alongY");
+        QTest::newRow("left") << "left" << 0 << 538 << true << false;
+        QTest::newRow("right") << "right" << 4294 << 538 << true << false;
+        QTest::newRow("top") << "top" << 2147 << 1075 << false << true;
+        QTest::newRow("bottom") << "bottom" << 2147 << 0 << false << true;
+        QTest::newRow("center") << "center" << 2147 << 538 << true << true;
+        QTest::newRow("space") << "KEY_SPACE" << 1738 << 0 << true << true;
+    }
+
+    void protocolWaveFields()
+    {
+        QFETCH(QString, origin);
+        QFETCH(int, x);
+        QFETCH(int, y);
+        QFETCH(bool, alongX);
+        QFETCH(bool, alongY);
+        const WaveFields f = waveFields({origin, "toward", 68}, Layout::gs76());
+        QCOMPARE(f.x, x);
+        QCOMPARE(f.y, y);
+        QCOMPARE(f.alongX, alongX);
+        QCOMPARE(f.alongY, alongY);
+        QCOMPARE(f.speed, 326);
+        QVERIFY(!f.away);
+        QVERIFY(waveFields({origin == "left" || origin == "right" || origin == "top" || origin == "bottom" ? "center" : origin,
+                            "away", 68}, Layout::gs76()).away);
+    }
+
+    static QByteArray effectPacketOf(const BuildResult &result, int slot)
+    {
+        for (const Packet &packet : result.packets)
+            if (quint8(packet.data.at(0)) == 0x0b && packet.data.at(2) == slot)
+                return packet.data;
+        return {};
+    }
+
+    void protocolWaveBytes()
+    {
+        Profile profile;
+        profile.base.type = "wave";
+        profile.base.steps = {{QColor("#00E5FF"), 40}, {QColor("#0A27D3"), 40}};
+        profile.base.wave = {"KEY_ESC", "away", 100};
+        const BuildResult result = buildPackets(profile, Layout::gs76());
+        QVERIFY2(result.errors.isEmpty(), qPrintable(result.errors.join("; ")));
+        const QByteArray packet = effectPacketOf(result, 0);
+        // 0x8A level, x 0, y 1075, x and y scaling (radial), speed 1001.
+        QCOMPARE(packet.mid(0x8a, 0x0c).toHex(' '), QByteArray("ff 00 00 00 33 04 01 00 01 00 e9 03"));
+        QCOMPARE(quint8(packet.at(0x9a)), quint8(1));
+        QString error;
+        const QList<Transition> table = transitions(scaled(baseEffect(profile.base), 100, 100), &error);
+        QCOMPARE(quint8(packet.at(0x96)), quint8(table.size()));
+    }
+
+    void protocolPulseUnchanged()
+    {
+        Profile profile;
+        EffectLayer pulse;
+        pulse.name = "p";
+        pulse.type = "pulse";
+        pulse.keys = {"KEY_F1"};
+        pulse.start = QColor("#FF0000");
+        pulse.steps = {{QColor("#FF0000"), 30}};
+        profile.effects = {pulse};
+        const BuildResult result = buildPackets(profile, Layout::gs76());
+        QVERIFY2(result.errors.isEmpty(), qPrintable(result.errors.join("; ")));
+        const QByteArray packet = effectPacketOf(result, 0);
+        QByteArray aqua0;
+        QFile file(QString(KLC_FIXTURES) + "/aqua.json");
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        for (const QJsonValue &hex : QJsonDocument::fromJson(file.readAll()).array()) {
+            const QByteArray p = QByteArray::fromHex(hex.toString().toLatin1());
+            if (quint8(p.at(0)) == 0x0b && p.at(2) == 0)
+                aqua0 = p;
+        }
+        QCOMPARE(packet.mid(0x8a, 0x0c), aqua0.mid(0x8a, 0x0c));
+        QCOMPARE(packet.at(0x9a), aqua0.at(0x9a));
+    }
+
     void protocolSizes()
     {
         for (const Profile &profile : {builtinProfile("ares"), Profile()})
