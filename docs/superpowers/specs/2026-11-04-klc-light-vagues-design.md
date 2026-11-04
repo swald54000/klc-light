@@ -1,4 +1,4 @@
-# klc-light : directions des vagues
+# klc-light : directions des vagues, touche Power
 
 Date : 2026-11-04
 Statut : conception validée en discussion, en attente de relecture
@@ -13,6 +13,8 @@ Mesures : `docs/origins.md` (13 envois sur le GS76 et encodeur de GG déchiffré
 Remplacer les six origines figées `aqua-0` … `aqua-5` par de vraies directions de vague,
 comme dans SteelSeries GG, et pouvoir faire partir ou arriver une vague sur une touche
 choisie (option « B » en discussion).
+
+Ajouter la touche Power (coin supérieur droit), oubliée jusqu'ici.
 
 ### Ce que le contrôleur permet (mesuré, voir `docs/origins.md`)
 
@@ -29,6 +31,9 @@ choisie (option « B » en discussion).
 - Directions prêtes à l'emploi **et** origine sur une touche choisie au clic.
 - Stockage par **origine nommée** (`left`, `KEY_G`…), pas par coordonnées.
 - S'applique au fond animé comme à chaque groupe en vague ; la pulsation reste sans origine.
+- Les positions des touches pour les vagues viennent des coordonnées de GG (§4), pas de la
+  photo.
+- La touche Power devient une touche comme les autres (§5).
 
 ### Critères de réussite
 
@@ -41,7 +46,9 @@ choisie (option « B » en discussion).
 4. Les profils et thèmes existants s'ouvrent sans erreur, convertis (§3).
 5. Sur le clavier, chaque direction part et arrive où l'éditeur l'annonce (vérifié avec
    l'utilisateur à la fin, un envoi par direction).
-6. Tous les tests existants restent verts.
+6. La touche Power est dessinée, sélectionnable, colorable et animable, et s'allume sur le
+   clavier comme l'éditeur l'annonce (le petit voyant orange voisin n'est pas pilotable).
+7. Tous les tests existants restent verts.
 
 ### Hors périmètre
 
@@ -102,7 +109,7 @@ Le format v1 (fichiers `keyboard.klc.json` des thèmes) accepte le même objet `
 | `aqua-0`, `aqua-2`, `aqua-5` | vers le centre | non : origine proche du centre |
 
 Taille 68 pour toutes. Les fichiers ne sont réécrits qu'au prochain enregistrement. Une
-origine qui n'est ni un nom connu ni une touche du clavier est une erreur (§7).
+origine qui n'est ni un nom connu ni une touche du clavier est une erreur (§8).
 
 ## 4. Envoi
 
@@ -118,25 +125,46 @@ Seuls changent :
 | 0x94 (u16) | vitesse = round(31 · (1001 / 31)^((taille − 1) / 99)), soit 31 … 1001 ; 68 → 326 |
 | 0x9A | 0 pour `toward`, 1 pour `away` |
 
-Points : `left` (0, 518), `right` (4294, 518), `top` (2147, 0), `bottom` (2147, 1037),
-`center` (2147, 518), une touche : son centre sur la photo de `Layout`, mis à l'échelle
-x · 4294 / 997, y · 1037 / 487 (la photo mesure 997 × 487 px, y vers le bas). Type :
-horizontale pour `left`/`right`, verticale pour `top`/`bottom`, circulaire sinon.
+Positions : chaque touche reçoit les coordonnées que GG donne pour le GE76
+(`get-prism-sync-nonvariant-hid-info` de `msi-ge76-klc.lisp`, x 140 … 807, y 89 … 256,
+y vers le haut), converties en unités du contrôleur par x' = (x − 140) · 6,44 et
+y' = (y − 89) · 6,44 (6,44 = 4294 / 667, la même échelle sur les deux axes). Les touches
+que GG place selon la disposition (variantes AZERTY) prennent la position de la variante
+française, ou à défaut celle de la touche voisine sur la photo. Les coordonnées sont
+générées dans `layoutdata.cpp` par `tools/gen_layout.py`, comme le reste de la disposition.
+
+Points : `left` (0, ymilieu), `right` (4294, ymilieu), `bottom` (xmilieu, 0),
+`top` (xmilieu, ymax), `center` (xmilieu, ymilieu), une touche : sa position, où ymax ≈ 1075
+est la rangée des touches F. Type : horizontale pour `left`/`right`, verticale pour
+`top`/`bottom`, circulaire sinon.
 
 La pulsation garde le paquet `aqua-0` (0x90 = 0x92 = 0), sans changement.
 
-Le calage x/y d'une touche et le sens vertical ne sont pas encore observés : la
-vérification finale (§8) les confirme, et la mise à l'échelle est isolée dans une seule
-fonction pour être corrigée sans toucher au reste.
+Le sens vertical (y vers le haut, comme GG) et le calage d'une origine sur une touche ne
+sont pas encore observés : la vérification finale (§9) les confirme. La conversion est
+isolée dans une seule fonction pour être corrigée sans toucher au reste.
 
-## 5. Aperçu
+## 5. Touche Power
+
+- `Layout` gagne `KEY_POWER`, HID 0x66, dessinée en haut à droite selon la photo, dans le
+  groupe de sélection « all » ; position GG (807, 256).
+- L'octet 2 d'un paquet `0x0e` est le nombre de touches qu'il contient (`docs/origins.md`) :
+  `regionCode()` laisse place à ce compte. La touche Power est envoyée en 12ᵉ élément du
+  paquet de 11 touches (octet 2 = 0x0C), en couleur fixe comme en animation, et en réactif
+  comme les autres touches.
+- Les comparaisons octet par octet avec les enregistrements d'origine ignorent ce 12ᵉ
+  élément et l'octet 2 de ce paquet ; tout le reste est comparé comme avant.
+- Les profils existants n'ont pas de couleur pour Power : elle prend la couleur du fond,
+  comme toute touche non peinte.
+
+## 6. Aperçu
 
 `Preview` remplace son décalage linéaire en x (`WaveMsPerUnit`) par le modèle du
 contrôleur : distance d de la touche au point (|dx| horizontale, |dy| verticale,
 √(dx² + dy²) circulaire, en unités du contrôleur), décalage = d / vitesse unités de 10 ms.
 `toward` : la touche lointaine est en avance de ce décalage ; `away` : en retard.
 
-## 6. Interface
+## 7. Interface
 
 ### Panneau d'effet (fond en vague ou groupe en vague)
 
@@ -160,14 +188,14 @@ Pendant le mode, les raccourcis de sélection sont sans effet.
 La touche d'origine de la vague ouverte dans le panneau porte un anneau blanc sur le clavier
 dessiné ; aucun anneau pour les directions vers un bord ou le centre.
 
-## 7. Erreurs
+## 8. Erreurs
 
 - Origine inconnue : « wave origin: unknown key "KEY_X" » (ou nom inconnu), à la lecture et
   à la validation ; le profil est marqué illisible dans la liste, comme aujourd'hui.
 - `flow` autre que `toward`/`away`, taille hors 1 … 100 : même traitement.
 - Une touche d'origine peut être hors du groupe : c'est voulu (une vague peut venir d'ailleurs).
 
-## 8. Tests
+## 9. Tests
 
 - Octets 0x8C … 0x9A pour chaque nom d'origine, pour une touche, pour `away`, et pour les
   tailles 1, 68 et 100 ; le reste du paquet d'effet inchangé.
@@ -180,14 +208,18 @@ dessiné ; aucun anneau pour les directions vers un bord ou le centre.
 - Interface : la liste propose huit choix ; le mode « Choisir la touche » fixe l'origine au
   clic, Échap l'annule, l'anneau suit l'origine ; annuler/rétablir couvre ces changements.
 - Les comparaisons octet par octet avec les enregistrements d'origine ignorent désormais
-  aussi 0x8C … 0x9A des paquets d'effet (les nouveaux points diffèrent de quelques unités
-  de ceux d'`aqua`).
+  aussi 0x8C … 0x9A des paquets d'effet (les nouveaux points diffèrent de ceux d'`aqua`).
+- Touche Power : présente dans la disposition avec sa position GG ; 12ᵉ élément et octet 2
+  = 0x0C dans le paquet de 11 touches, en fixe, en animé et en réactif ; aucun autre
+  paquet ne change.
+- Positions : chaque touche du clavier dessiné a une position GG ; quelques valeurs
+  vérifiées (Échap, barre d'espace, Power).
 
-Vérification avec l'utilisateur à la fin : un envoi par direction (huit), en notant d'où
-part la vague ; s'il le faut, la mise à l'échelle x/y ou le sens vertical sont corrigés puis
-revérifiés.
+Vérification avec l'utilisateur à la fin : la touche Power peinte d'une couleur, puis un
+envoi par direction (huit), en notant d'où part la vague ; s'il le faut, la mise à
+l'échelle x/y ou le sens vertical sont corrigés puis revérifiés.
 
-## 9. Livraison
+## 10. Livraison
 
 Commits par étape sur `profils-groupes`, `bin/test` vert à chaque commit, README et aide
 mis à jour (format v3, directions), version 0.3.0 à la fin.
