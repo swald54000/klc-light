@@ -653,6 +653,8 @@ void Backend::onApplyFinished(const ApplyResult &result) {
         // What the keyboard shows, and what `klc-light apply` sends again at boot. Read
         // state.json afresh: a theme hook may have changed it since the editor opened.
         Library library = fresh();
+        // The keyboard is lit again: clear a `klc-light off` for the bar widget.
+        library.setOff(false);
         for (const QString &name : library.names())
             if (name.compare(m_sending, Qt::CaseInsensitive) == 0) {
                 library.setApplied(name);

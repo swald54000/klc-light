@@ -14,7 +14,8 @@ Panel {
   ipcTarget: "swald.klc-light"
 
   property var library: ({})     // `klc-light list --json`
-  property bool available: true  // klc-light answered `list --json` with a library
+  property bool available: false // klc-light answered `list --json` with a library
+  property bool listAnswered: false
   property bool busy: false      // a send is running
   property string error: ""
   readonly property bool off: library.off === true
@@ -25,7 +26,9 @@ Panel {
   Commons.Translations { id: strings; directory: Qt.resolvedUrl("i18n") }
 
   function refresh() {
-    if (!listProc.running) listProc.running = true
+    if (listProc.running) return
+    listAnswered = false
+    listProc.running = true
   }
 
   // One klc-light command at a time; the list is read again when it ends.
@@ -54,18 +57,27 @@ Panel {
           if (!parsed || !Array.isArray(parsed.profiles)) throw "no library"
           root.library = parsed
           root.available = true
+          root.listAnswered = true
         } catch (e) {
           // Not installed, or a version without `list`.
           root.available = false
         }
       }
     }
-    onExited: function(code) { if (code !== 0) root.available = false }
+    onExited: function(code) {
+      root.listAnswered = true
+      if (code !== 0) root.available = false
+    }
+    // A missing binary only stops the process: Quickshell emits neither exited nor
+    // streamFinished, so not having heard back means klc-light is not installed.
+    onRunningChanged: if (!running && !root.listAnswered) root.available = false
   }
 
   Process {
     id: actionProc
     stdout: StdioCollector { id: actionOut; waitForEnd: true }
+    // Also ends a send that never started (klc-light removed meanwhile).
+    onRunningChanged: if (!running) root.busy = false
     onExited: function(code) {
       root.busy = false
       if (code === 2) {

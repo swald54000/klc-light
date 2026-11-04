@@ -2255,6 +2255,20 @@ private slots:
         QCOMPARE(run.backend->currentKind(), QString("base"));
     }
 
+    // Sent from the editor after `klc-light off`, the profile lights the keyboard again, so the
+    // bar widget must not keep showing it off.
+    void backendApplyTurnsOn()
+    {
+        EditorRun run;
+        Library(run.dir.path() + "/klc").setOff(true);
+        run.backend->openBase();
+        run.backend->setColor(QColor("#123456"));
+        run.backend->apply();
+        QTRY_COMPARE(run.sent, 1);
+        QTRY_VERIFY(!run.backend->busy());
+        QVERIFY(!Library(run.dir.path() + "/klc").off());
+    }
+
     void backendApplySaves()
     {
         EditorRun run;
