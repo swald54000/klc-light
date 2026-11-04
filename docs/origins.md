@@ -118,14 +118,36 @@ Eleven single sends from a throwaway build (base wave white → blue, 60 + 60 + 
 
 So, on this controller:
 
-- 0x90 turns the wave on; at 0 every linked key runs the cycle in step. `aqua-0` is a
-  plain pulse, as first guessed; Keyglow's "propagate along y" reading is wrong here.
-- 0x92 makes no visible difference while 0x90 is 1.
+- 0x90 and 0x92 are the x and y scaling of the distance (see below): `aqua-0` (both 0)
+  is a plain pulse. The "no wave" seen with 0x90 = 0, 0x92 = 1 was a vertical wave too
+  fast to see at 0x94 = 327.
 - The phase follows the distance to the point (0x8C, 0x8E), in both x and y: fronts are
   circles around it, not lines.
 - 0x9A = 0 makes the wave run toward the point, 1 away from it — the reverse of
   Keyglow's naming.
-- 0x94 is the wavelength: smaller values give narrower bands.
+- 0x94 is GG's `scale`, the propagation speed (pixels per tick): a key lags by its
+  distance divided by it, so smaller values give narrower bands.
 - The point must stay on or near the keyboard: at |y| = 32000 the result is wrong (likely
   an overflow in the controller), so a straight vertical wave is out of reach. Distances
   across the board stay within x 0..4294, y 0..1037.
+
+## SteelSeries GG's own encoding (decrypted `fancy_lighting_engine.lisp`)
+
+GG builds the effect payload from its `lighting_effect` struct (`libsteel_lighting_graphics`):
+transition sections, start color × 16 (8.4 fixed point), `255 0` (0x8A), `focal_x`
+`focal_y` (0x8C, 0x8E), x scaling (0x90), y scaling (0x92), `scale` (0x94), section
+count (0x96), total ticks (0x98), `direction_inverted` (0x9A). The scalings follow
+`direction_type` (`common_lighting.lisp`):
+
+| direction_type | 0x90 | 0x92 |
+|---|---|---|
+| horizontal (0) | 1 | 0 |
+| vertical (1) | 0 | 1 |
+| radial (2) | 1 | 1 |
+
+`scale` is "propagation speed (pixels per tick)". GG's `ss-klc-base` also declares effect
+slots `effect_0` … `effect_18`, beyond the 6 we use.
+
+Two more sends (2026-11-04), vertical (0x90 = 0, 0x92 = 1) at the slowest speed, 31,
+origin at the top then the bottom: rows alternate light and dark blue in both, so the
+controller does know each key's height; at 327 that lag was too small to see.
