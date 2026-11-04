@@ -1,0 +1,9 @@
+post_install() {
+  echo '>>> KLC Light: to light the keyboard without root, join the klc-light group:'
+  echo '>>>   sudo usermod -aG klc-light $USER'
+  echo '>>> then log out and back in (or restart).'
+}
+
+post_upgrade() {
+  post_install
+}
