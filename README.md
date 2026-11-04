@@ -67,6 +67,19 @@ neighbouring keys (pressing A in AZERTY also glows Z faintly): pressed colors
 with little green avoid it. `--experimental-reactive` is no longer needed and
 is ignored.
 
+## Omarchy bar widget
+
+`omarchy-plugin/swald.klc-light` is a bar widget for Omarchy's shell: a keyboard
+icon (dimmed while the lighting is off) whose tooltip names the applied profile.
+Click it for the profile list (a click applies one), right-click to turn the
+keyboard off, middle-click to turn it back on; the panel also opens the editor.
+It only runs `klc-light list`, `apply` and `off`, and follows `state.json`, so it
+shows what the editor and the theme hooks apply.
+
+To install it, copy the folder into `~/.config/omarchy/plugins/` (a symlink to a
+folder outside `~/.config` is not picked up), then run
+`omarchy-shell shell rescanPlugins` and `omarchy plugin enable swald.klc-light`.
+
 ## Profile library
 
 Profiles are plain files in `~/.config/klc-light/profiles/<name>.klc.json`.
