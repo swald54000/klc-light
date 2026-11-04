@@ -17,6 +17,7 @@ struct Key {
     double x, y;  // Centre, in pixels of the reference photo of the keyboard; y grows downwards.
     double w, h;  // Size in the same pixels.
     bool visible = true; // False for codes the controller has but the keyboard does not show.
+    int cx = -1, cy = -1; // Position in the controller's wave units (x 0..4294, y 0..1075 upward), from GG.
 };
 
 // The GS76 French ISO keyboard as the controller sees it.

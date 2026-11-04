@@ -22,7 +22,7 @@ Layout::Layout() {
         const KeyData &d = kKeyData[i];
         m_byId.insert(QString::fromLatin1(d.id), m_keys.size());
         m_byHid.insert(d.hid, m_keys.size());
-        m_keys.append({QString::fromLatin1(d.id), d.hid, d.region, d.x, d.y, double(d.w), double(d.h), d.visible});
+        m_keys.append({QString::fromLatin1(d.id), d.hid, d.region, d.x, d.y, double(d.w), double(d.h), d.visible, d.cx, d.cy});
     }
 }
 

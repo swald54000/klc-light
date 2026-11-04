@@ -224,7 +224,7 @@ private slots:
     void layoutCounts()
     {
         const Layout &layout = Layout::gs76();
-        QCOMPARE(layout.keys().size(), 101);
+        QCOMPARE(layout.keys().size(), 102);
         for (Region region : {Region::Alphanum, Region::Enter, Region::Modifiers, Region::Numpad})
             QCOMPARE(layout.regionHids(region).size(), 42);
         QCOMPARE(layout.aquaHids(Region::Alphanum).size(), 42);
@@ -235,8 +235,9 @@ private slots:
         for (Region region : {Region::Alphanum, Region::Enter, Region::Modifiers, Region::Numpad})
             for (quint8 hid : layout.aquaHids(region))
                 aqua.insert(hid);
+        // The power key is in none of the captured packets: it is sent as an extra element.
         for (const Key &key : layout.keys())
-            QVERIFY2(aqua.contains(key.hid), qPrintable(key.id));
+            QVERIFY2(aqua.contains(key.hid) || key.id == "KEY_POWER", qPrintable(key.id));
         QCOMPARE(int(layout.byId("KEY_Q")->hid), 0x14);
         QCOMPARE(layout.byHid(0x14)->id, QString("KEY_Q"));
         QCOMPARE(regionCode(Region::Alphanum), quint8(0x2a));
@@ -251,7 +252,7 @@ private slots:
         QCOMPARE(layout.group("wasd"), QStringList({"KEY_W", "KEY_A", "KEY_S", "KEY_D"}));
         QCOMPARE(layout.group("function").size(), 12);
         QCOMPARE(layout.group("digits").size(), 10);
-        QCOMPARE(layout.group("all").size(), 101);
+        QCOMPARE(layout.group("all").size(), 102);
         QVERIFY(layout.group("numpad").contains("KEY_KP5"));
     }
 
@@ -1975,7 +1976,7 @@ private slots:
     {
         EditorRun run;
         const QVariantList keys = run.backend->keys();
-        QCOMPARE(keys.size(), 101);
+        QCOMPARE(keys.size(), 102);
         for (const QVariant &key : keys)
             QVERIFY(key.toMap()["right"].toDouble() > key.toMap()["left"].toDouble());
         for (int i = 0; i < keys.size(); ++i)
@@ -3262,6 +3263,29 @@ private slots:
             ids.insert(key.id);
             QCOMPARE(Layout::gs76().byId(key.id)->hid, key.hid);
         }
+    }
+
+    void layoutPowerKey()
+    {
+        const Key *power = Layout::gs76().byId("KEY_POWER");
+        QVERIFY(power);
+        QCOMPARE(power->hid, quint8(0x66));
+        QVERIFY(power->visible);
+        QVERIFY(Layout::gs76().group("all").contains("KEY_POWER"));
+        QCOMPARE(power->cx, 4294);
+        QCOMPARE(power->cy, 1075);
+    }
+
+    // Key positions in the controller's units, from SteelSeries GG's GE76 table.
+    void layoutControllerPositions()
+    {
+        const Layout &l = Layout::gs76();
+        QCOMPARE(l.byId("KEY_ESC")->cx, 0);
+        QCOMPARE(l.byId("KEY_ESC")->cy, 1075);
+        QCOMPARE(l.byId("KEY_SPACE")->cx, 1738);
+        QCOMPARE(l.byId("KEY_SPACE")->cy, 0);
+        for (const Key &key : l.keys())
+            QVERIFY2(key.cx >= 0 && key.cy >= 0, qPrintable(key.id));
     }
 
 private:

@@ -9,6 +9,7 @@ struct KeyData {
     double x, y; // Centre, photo pixels, y downwards.
     int w, h;    // Size, photo pixels.
     bool visible;
+    int cx, cy;  // Position in the controller's wave units, -1 when GG has none.
 };
 
 extern const KeyData kKeyData[];
