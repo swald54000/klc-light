@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "swald.klc-light",
+  "name": "KLC Light",
+  "version": "1.0.0",
+  "author": "swald",
+  "description": "Per-key keyboard lighting for MSI laptops (SteelSeries KLC), from KLC Light",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Keyboard lighting",
+    "description": "Apply a KLC Light profile, turn the keyboard off or on, open the editor",
+    "category": "System",
+    "allowMultiple": false
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "unavailable": "KLC Light is not installed or too old",
+  "tooltip.off": "Keyboard lighting off",
+  "tooltip.none": "No profile applied",
+  "tooltip.clicks": "Click: profiles · Right click: off · Middle click: on",
+  "panel.title": "Keyboard lighting",
+  "panel.editor": "Open the editor",
+  "panel.off": "Turn off",
+  "panel.on": "Turn on",
+  "panel.profiles": "PROFILES",
+  "panel.linked": "linked to the theme",
+  "panel.unreadable": "unreadable",
+  "panel.empty": "No profile yet: create one in the editor",
+  "error.absent": "The keyboard's lighting controller is not on the USB bus",
+  "error.failed": "Sending to the keyboard failed"
+}

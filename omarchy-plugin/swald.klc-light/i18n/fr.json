@@ -1,0 +1,16 @@
+{
+  "unavailable": "KLC Light n'est pas installé ou est trop ancien",
+  "tooltip.off": "Éclairage du clavier éteint",
+  "tooltip.none": "Aucun profil appliqué",
+  "tooltip.clicks": "Clic : profils · Clic droit : éteindre · Clic du milieu : rallumer",
+  "panel.title": "Éclairage du clavier",
+  "panel.editor": "Ouvrir l'éditeur",
+  "panel.off": "Éteindre",
+  "panel.on": "Rallumer",
+  "panel.profiles": "PROFILS",
+  "panel.linked": "lié au thème",
+  "panel.unreadable": "illisible",
+  "panel.empty": "Aucun profil : créez-en un dans l'éditeur",
+  "error.absent": "Le contrôleur d'éclairage du clavier n'est pas sur le bus USB",
+  "error.failed": "L'envoi au clavier a échoué"
+}
