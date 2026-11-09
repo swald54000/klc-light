@@ -1,0 +1,76 @@
+{
+    "version": 3,
+    "name": "Ocean",
+    "brightness": 100,
+    "speed": 90,
+    "base": {
+        "type": "wave",
+        "steps": [
+            [
+                "#0050FF",
+                50
+            ],
+            [
+                "#00B4FF",
+                50
+            ],
+            [
+                "#0020A0",
+                50
+            ]
+        ],
+        "wave": {
+            "origin": "center",
+            "flow": "away",
+            "size": 45
+        }
+    },
+    "groups": [
+        {
+            "name": "Foam",
+            "behavior": "static",
+            "color": "#80F0FF",
+            "keys": [
+                "KEY_SPACE"
+            ]
+        },
+        {
+            "name": "Numpad",
+            "behavior": "pulse",
+            "steps": [
+                [
+                    "#0080FF",
+                    60
+                ],
+                [
+                    "#001E78",
+                    60
+                ]
+            ],
+            "keys": [
+                "KEY_NUMLOCK",
+                "KEY_KPSLASH",
+                "KEY_KPASTERISK",
+                "KEY_KPMINUS",
+                "KEY_KPPLUS",
+                "KEY_KPENTER",
+                "KEY_KP1",
+                "KEY_KP2",
+                "KEY_KP3",
+                "KEY_KP4",
+                "KEY_KP5",
+                "KEY_KP6",
+                "KEY_KP7",
+                "KEY_KP8",
+                "KEY_KP9",
+                "KEY_KP0",
+                "KEY_KPDOT"
+            ]
+        }
+    ],
+    "reactive": {
+        "enabled": false,
+        "color": "#FFFFFF",
+        "duration": 300
+    }
+}

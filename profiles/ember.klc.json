@@ -1,0 +1,80 @@
+{
+    "version": 3,
+    "name": "Ember",
+    "brightness": 100,
+    "speed": 90,
+    "base": {
+        "type": "wave",
+        "steps": [
+            [
+                "#FF2000",
+                50
+            ],
+            [
+                "#FF7000",
+                40
+            ],
+            [
+                "#B00000",
+                60
+            ],
+            [
+                "#FF4000",
+                40
+            ]
+        ],
+        "wave": {
+            "origin": "bottom",
+            "flow": "toward",
+            "size": 50
+        }
+    },
+    "groups": [
+        {
+            "name": "Numpad",
+            "behavior": "pulse",
+            "steps": [
+                [
+                    "#FF5000",
+                    80
+                ],
+                [
+                    "#600000",
+                    80
+                ]
+            ],
+            "keys": [
+                "KEY_NUMLOCK",
+                "KEY_KPSLASH",
+                "KEY_KPASTERISK",
+                "KEY_KPMINUS",
+                "KEY_KPPLUS",
+                "KEY_KPENTER",
+                "KEY_KP1",
+                "KEY_KP2",
+                "KEY_KP3",
+                "KEY_KP4",
+                "KEY_KP5",
+                "KEY_KP6",
+                "KEY_KP7",
+                "KEY_KP8",
+                "KEY_KP9",
+                "KEY_KP0",
+                "KEY_KPDOT"
+            ]
+        },
+        {
+            "name": "Space",
+            "behavior": "static",
+            "color": "#FFB000",
+            "keys": [
+                "KEY_SPACE"
+            ]
+        }
+    ],
+    "reactive": {
+        "enabled": false,
+        "color": "#FFFFFF",
+        "duration": 300
+    }
+}

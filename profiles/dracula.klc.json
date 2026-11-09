@@ -1,0 +1,90 @@
+{
+    "version": 3,
+    "name": "Dracula",
+    "brightness": 100,
+    "speed": 100,
+    "base": {
+        "type": "static",
+        "color": "#8A3CFF"
+    },
+    "groups": [
+        {
+            "name": "Function keys",
+            "behavior": "static",
+            "color": "#FF3CB4",
+            "keys": [
+                "KEY_F1",
+                "KEY_F2",
+                "KEY_F3",
+                "KEY_F4",
+                "KEY_F5",
+                "KEY_F6",
+                "KEY_F7",
+                "KEY_F8",
+                "KEY_F9",
+                "KEY_F10",
+                "KEY_F11",
+                "KEY_F12"
+            ]
+        },
+        {
+            "name": "Arrows",
+            "behavior": "static",
+            "color": "#30E8FF",
+            "keys": [
+                "KEY_UP",
+                "KEY_DOWN",
+                "KEY_LEFT",
+                "KEY_RIGHT"
+            ]
+        },
+        {
+            "name": "Modifiers",
+            "behavior": "static",
+            "color": "#C060FF",
+            "keys": [
+                "KEY_LEFTCTRL",
+                "KEY_LEFTMETA",
+                "KEY_LEFTALT",
+                "KEY_FN",
+                "KEY_RIGHTALT",
+                "KEY_RIGHTCTRL",
+                "KEY_LEFTSHIFT",
+                "KEY_RIGHTSHIFT",
+                "KEY_CAPSLOCK",
+                "KEY_TAB"
+            ]
+        },
+        {
+            "name": "Enter",
+            "behavior": "static",
+            "color": "#30FF70",
+            "keys": [
+                "KEY_ENTER",
+                "KEY_KPENTER"
+            ]
+        },
+        {
+            "name": "Escape",
+            "behavior": "pulse",
+            "steps": [
+                [
+                    "#FF2020",
+                    50
+                ],
+                [
+                    "#400010",
+                    50
+                ]
+            ],
+            "keys": [
+                "KEY_ESC"
+            ]
+        }
+    ],
+    "reactive": {
+        "enabled": false,
+        "color": "#FFFFFF",
+        "duration": 300
+    }
+}

@@ -1,0 +1,105 @@
+{
+    "version": 3,
+    "name": "Catppuccin",
+    "brightness": 100,
+    "speed": 100,
+    "base": {
+        "type": "static",
+        "color": "#9A4DFF"
+    },
+    "groups": [
+        {
+            "name": "Function keys",
+            "behavior": "static",
+            "color": "#5070FF",
+            "keys": [
+                "KEY_F1",
+                "KEY_F2",
+                "KEY_F3",
+                "KEY_F4",
+                "KEY_F5",
+                "KEY_F6",
+                "KEY_F7",
+                "KEY_F8",
+                "KEY_F9",
+                "KEY_F10",
+                "KEY_F11",
+                "KEY_F12"
+            ]
+        },
+        {
+            "name": "Modifiers",
+            "behavior": "static",
+            "color": "#FF5AB4",
+            "keys": [
+                "KEY_LEFTCTRL",
+                "KEY_LEFTMETA",
+                "KEY_LEFTALT",
+                "KEY_FN",
+                "KEY_RIGHTALT",
+                "KEY_RIGHTCTRL",
+                "KEY_LEFTSHIFT",
+                "KEY_RIGHTSHIFT",
+                "KEY_CAPSLOCK",
+                "KEY_TAB"
+            ]
+        },
+        {
+            "name": "Arrows",
+            "behavior": "static",
+            "color": "#FF8040",
+            "keys": [
+                "KEY_UP",
+                "KEY_DOWN",
+                "KEY_LEFT",
+                "KEY_RIGHT"
+            ]
+        },
+        {
+            "name": "Numpad",
+            "behavior": "static",
+            "color": "#3C9CFF",
+            "keys": [
+                "KEY_NUMLOCK",
+                "KEY_KPSLASH",
+                "KEY_KPASTERISK",
+                "KEY_KPMINUS",
+                "KEY_KPPLUS",
+                "KEY_KPENTER",
+                "KEY_KP1",
+                "KEY_KP2",
+                "KEY_KP3",
+                "KEY_KP4",
+                "KEY_KP5",
+                "KEY_KP6",
+                "KEY_KP7",
+                "KEY_KP8",
+                "KEY_KP9",
+                "KEY_KP0",
+                "KEY_KPDOT"
+            ]
+        },
+        {
+            "name": "Escape",
+            "behavior": "pulse",
+            "steps": [
+                [
+                    "#FF2070",
+                    60
+                ],
+                [
+                    "#9A4DFF",
+                    60
+                ]
+            ],
+            "keys": [
+                "KEY_ESC"
+            ]
+        }
+    ],
+    "reactive": {
+        "enabled": false,
+        "color": "#FFFFFF",
+        "duration": 300
+    }
+}

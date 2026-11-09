@@ -1,0 +1,58 @@
+{
+    "version": 3,
+    "name": "Sunset",
+    "brightness": 100,
+    "speed": 70,
+    "base": {
+        "type": "wave",
+        "steps": [
+            [
+                "#FF9A00",
+                60
+            ],
+            [
+                "#FF3C28",
+                60
+            ],
+            [
+                "#E0007A",
+                60
+            ],
+            [
+                "#FF3C28",
+                60
+            ]
+        ],
+        "wave": {
+            "origin": "right",
+            "flow": "toward",
+            "size": 70
+        }
+    },
+    "groups": [
+        {
+            "name": "Arrows",
+            "behavior": "static",
+            "color": "#FFD000",
+            "keys": [
+                "KEY_UP",
+                "KEY_DOWN",
+                "KEY_LEFT",
+                "KEY_RIGHT"
+            ]
+        },
+        {
+            "name": "Space",
+            "behavior": "static",
+            "color": "#FF6A00",
+            "keys": [
+                "KEY_SPACE"
+            ]
+        }
+    ],
+    "reactive": {
+        "enabled": false,
+        "color": "#FFFFFF",
+        "duration": 300
+    }
+}

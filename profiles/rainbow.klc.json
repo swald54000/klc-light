@@ -1,0 +1,24 @@
+{
+    "version": 3,
+    "name": "Rainbow",
+    "brightness": 100,
+    "speed": 100,
+    "base": {
+        "type": "rainbow"
+    },
+    "groups": [
+        {
+            "name": "Space",
+            "behavior": "static",
+            "color": "#FFFFFF",
+            "keys": [
+                "KEY_SPACE"
+            ]
+        }
+    ],
+    "reactive": {
+        "enabled": false,
+        "color": "#FFFFFF",
+        "duration": 300
+    }
+}

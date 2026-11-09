@@ -1,0 +1,71 @@
+{
+    "version": 3,
+    "name": "Sakura",
+    "brightness": 100,
+    "speed": 60,
+    "base": {
+        "type": "wave",
+        "steps": [
+            [
+                "#FF3C8C",
+                70
+            ],
+            [
+                "#FF8CB4",
+                60
+            ],
+            [
+                "#C0207A",
+                70
+            ]
+        ],
+        "wave": {
+            "origin": "right",
+            "flow": "toward",
+            "size": 75
+        }
+    },
+    "groups": [
+        {
+            "name": "Space",
+            "behavior": "static",
+            "color": "#FFD0E0",
+            "keys": [
+                "KEY_SPACE"
+            ]
+        },
+        {
+            "name": "Function keys",
+            "behavior": "pulse",
+            "steps": [
+                [
+                    "#FF60A0",
+                    80
+                ],
+                [
+                    "#601030",
+                    80
+                ]
+            ],
+            "keys": [
+                "KEY_F1",
+                "KEY_F2",
+                "KEY_F3",
+                "KEY_F4",
+                "KEY_F5",
+                "KEY_F6",
+                "KEY_F7",
+                "KEY_F8",
+                "KEY_F9",
+                "KEY_F10",
+                "KEY_F11",
+                "KEY_F12"
+            ]
+        }
+    ],
+    "reactive": {
+        "enabled": false,
+        "color": "#FFFFFF",
+        "duration": 300
+    }
+}
