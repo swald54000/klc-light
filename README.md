@@ -136,6 +136,37 @@ old per-theme files (`~/.config/omarchy/themes/<theme>/keyboard.klc.json`, else
 nothing to migrate a `Default` profile is created. Older formats are converted when read
 and written in the current one (version 3) at the next save.
 
+### Ready-made profiles
+
+The [`profiles/`](profiles) folder holds thirteen profiles to start from. Copy the ones
+you like into the library (`cp -n` leaves a profile of the same file name alone):
+
+```sh
+mkdir -p ~/.config/klc-light/profiles
+cp -n profiles/*.klc.json ~/.config/klc-light/profiles/
+```
+
+| Profile | Effect |
+|---|---|
+| Northern Lights | Green, teal and violet wave rising from the bottom; function keys pulse violet |
+| Sunset | Gold to coral to magenta wave from the right; golden arrows |
+| Ocean | Blue swell spreading from the centre; foam-white space bar, pulsing numpad |
+| Ember | Red and orange lava rising from the bottom; smouldering numpad |
+| Digital Rain | Green rain falling from the top; reactive keys on |
+| Synthwave | Magenta, violet and cyan wave; neon function keys, blinking Escape |
+| Sakura | Drifting pinks from the right; pulsing function keys |
+| Rainbow | The classic animated spectrum; white space bar |
+| Dracula | Violet base; pink function keys, cyan arrows, green Enter |
+| Catppuccin | Mauve base; lavender function keys, pink modifiers, peach arrows |
+| Nord Frost | Frost-blue base; red Escape, green Enter, yellow arrows |
+| Gruvbox | Slow ochre and orange wave; yellow function keys |
+| Rosé Pine | Rose and iris rippling out from the G key |
+
+The theme palettes are made more saturated than the originals, since pastels look almost
+white on the LEDs. The groups use only function keys, arrows, the numpad, modifiers,
+Escape, Enter and Space, so they suit any layout. Link one to an Omarchy theme from the
+editor's top bar.
+
 ## Known limits
 
 - **Power key:** its LED shows F1's color whatever is sent, so the editor draws it in F1's

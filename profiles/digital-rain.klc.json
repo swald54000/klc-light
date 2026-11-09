@@ -1,0 +1,44 @@
+{
+    "version": 3,
+    "name": "Digital Rain",
+    "brightness": 100,
+    "speed": 150,
+    "base": {
+        "type": "wave",
+        "steps": [
+            [
+                "#00FF20",
+                30
+            ],
+            [
+                "#006A0C",
+                40
+            ],
+            [
+                "#001A04",
+                40
+            ]
+        ],
+        "wave": {
+            "origin": "top",
+            "flow": "toward",
+            "size": 35
+        }
+    },
+    "groups": [
+        {
+            "name": "Enter",
+            "behavior": "static",
+            "color": "#B0FFB0",
+            "keys": [
+                "KEY_ENTER",
+                "KEY_KPENTER"
+            ]
+        }
+    ],
+    "reactive": {
+        "enabled": true,
+        "color": "#E0FFE0",
+        "duration": 300
+    }
+}
