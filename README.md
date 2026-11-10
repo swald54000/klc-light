@@ -106,6 +106,7 @@ duplicates, renames and deletes profiles and links the open one to a theme.
   one's theme link, unreadable files and the active theme.
 - `--check` builds and validates without sending (`N packets OK`); `--json` gives
   machine-readable output, for sends too.
+- `klc-light --version` prints the version (handy in a bug report), `--help` the usage.
 - Exit status: 0 on success or when there is nothing to apply, 1 on any error (message on
   stderr), 2 when the controller is absent from the USB bus (on the GS76 that happens after
   a warm restart; only a full power-off brings it back).

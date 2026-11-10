@@ -1,5 +1,6 @@
 #include "sysfsbinder.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -44,10 +45,10 @@ bool SysfsBinder::writeAuthorized(const QString &path, const QByteArray &value, 
         return true;
     const bool denied = errno == EACCES || errno == EPERM;
     if (denied && fileGroup(path) == "klc-light")
-        *error = "Add your user to the klc-light group (sudo usermod -aG klc-light $USER), then log in again.";
+        *error = QCoreApplication::translate("SysfsBinder", "Add your user to the klc-light group (sudo usermod -aG klc-light $USER), then log in again.");
     else if (denied)
-        *error = "The klc-light udev rule has not run on the controller yet: restart the computer "
-                 "(or run sudo udevadm trigger --action=add --attr-match=idVendor=1038).";
+        *error = QCoreApplication::translate("SysfsBinder", "The klc-light udev rule has not run on the controller yet: restart the computer "
+                                                            "(or run sudo udevadm trigger --action=add --attr-match=idVendor=1038).");
     else
         *error = QString("Cannot write %1: %2").arg(path, file.errorString());
     return false;
@@ -62,7 +63,7 @@ bool SysfsBinder::bind(QString *error) {
     // Detached from its driver (by the old msi-kbd-usb helper), the controller is authorised
     // but never configured again; the kernel binds it at the next boot.
     if (!QFileInfo::exists(path + "/driver")) {
-        *error = "The lighting controller lost its USB driver: shut the computer down completely (power off), then start it again.";
+        *error = QCoreApplication::translate("SysfsBinder", "The lighting controller lost its USB driver: shut the computer down completely (power off), then start it again.");
         return false;
     }
     return true;

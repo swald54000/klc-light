@@ -3,3 +3,6 @@
 /pkgbuild/src/
 *.pkg.tar.*
 .superpowers/
+/aur/*.tar.gz
+/aur/pkg/
+/aur/src/

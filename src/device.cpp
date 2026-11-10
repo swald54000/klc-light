@@ -5,6 +5,36 @@
 #include <QFile>
 #include <QLockFile>
 
+#include <csignal>
+
+namespace {
+
+// Holds SIGINT, SIGTERM and SIGHUP back while the controller is attached: a process killed
+// between attach and detach would leave the keyboard attached and half-configured. They are
+// delivered when this goes out of scope, once the controller is detached again.
+class SignalHold {
+public:
+    SignalHold() {
+        sigset_t set;
+        sigemptyset(&set);
+        for (int sig : {SIGINT, SIGTERM, SIGHUP})
+            sigaddset(&set, sig);
+        m_held = pthread_sigmask(SIG_BLOCK, &set, &m_previous) == 0;
+    }
+    ~SignalHold() {
+        if (m_held)
+            pthread_sigmask(SIG_SETMASK, &m_previous, nullptr);
+    }
+    SignalHold(const SignalHold &) = delete;
+    SignalHold &operator=(const SignalHold &) = delete;
+
+private:
+    sigset_t m_previous;
+    bool m_held = false;
+};
+
+} // namespace
+
 Device::Device(Transport &transport, Binder &binder, QString runtimeDir, std::function<void(int)> sleepMs,
                std::function<qint64()> nowMs)
     : m_transport(transport), m_binder(binder), m_runtimeDir(std::move(runtimeDir)), m_sleepMs(std::move(sleepMs)),
@@ -46,6 +76,7 @@ ApplyResult Device::applyLatest(const std::function<BuildResult()> &build) {
     if (packets.isEmpty())
         return {};
 
+    const SignalHold hold;
     QString error;
     if (!m_binder.bind(&error)) {
         // A bind that timed out may still finish as root; detaching is harmless when the
