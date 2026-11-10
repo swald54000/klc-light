@@ -16,7 +16,9 @@ jobs:
       - name: Install dependencies
         run: pacman -Syu --noconfirm --needed base-devel git qt6-base qt6-declarative qt6-wayland hidapi libxkbcommon xkeyboard-config ttf-dejavu
       - uses: actions/checkout@v4
-      - name: Build
-        run: ./bin/build
-      - name: Test
-        run: ./bin/test
+      # As an ordinary user: some tests rely on file permissions, which root ignores.
+      - name: Build and test
+        run: |
+          useradd -m ci
+          chown -R ci .
+          su ci -c ./bin/test
