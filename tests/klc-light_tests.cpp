@@ -15,6 +15,7 @@
 #include "document.h"
 #include "sysfsbinder.h"
 #include <unistd.h>
+#include <csignal>
 #include "effects.h"
 #include "keylabels.h"
 #include "layout.h"
@@ -61,6 +62,19 @@ private:
         return ++sent != failAt;
     }
     FakeLog &m_log;
+};
+
+// Asks to be terminated in the middle of a send, as Ctrl+C or a logout would.
+static QStringList *g_signalEvents = nullptr;
+static void recordSignal(int) { if (g_signalEvents) *g_signalEvents << "signal"; }
+class InterruptedTransport : public FakeTransport {
+public:
+    using FakeTransport::FakeTransport;
+    bool sendFeature(const QByteArray &data) override {
+        if (sent == 0)
+            raise(SIGTERM);
+        return FakeTransport::sendFeature(data);
+    }
 };
 
 // Records what would be written to `authorized` instead of writing it.
@@ -4074,6 +4088,50 @@ private slots:
         QMetaObject::invokeMethod(undo, "clicked");
         QVERIFY(!ui.run.backend->canUndo());
         QTRY_VERIFY(redo->isEnabled());
+    }
+
+    // A signal arriving mid-send waits until the controller is detached again: killed
+    // between attach and detach, the keyboard would stay attached and half-configured.
+    void deviceHoldsSignalsUntilDetached()
+    {
+        QTemporaryDir dir;
+        FakeLog log;
+        InterruptedTransport transport(log);
+        FakeBinder binder(log);
+        Device device = fakeDevice(transport, binder, dir, log);
+        g_signalEvents = &log.events;
+        auto previous = std::signal(SIGTERM, recordSignal);
+        const ApplyResult result = device.apply(buildPackets(Profile(), Layout::gs76()).packets);
+        std::signal(SIGTERM, previous);
+        g_signalEvents = nullptr;
+        QCOMPARE(int(result.error), int(ApplyError::None));
+        QCOMPARE(log.events.count("signal"), 1);
+        QVERIFY2(log.events.indexOf("signal") > log.events.indexOf("unbind"), qPrintable(log.events.join(" ")));
+    }
+
+    void cliVersionAndHelp()
+    {
+        QTemporaryDir dir;
+        CliRun run(dir, fakeTheme(dir, "tokyo-night"));
+        QCOMPARE(run.exec({"--version"}), 0);
+        QCOMPARE(run.out, QString("klc-light %1\n").arg(kVersion));
+        run.out.clear();
+        QCOMPARE(run.exec({"--help"}), 0);
+        QVERIFY(run.out.startsWith("usage: klc-light"));
+        QVERIFY(run.err.isEmpty());
+        // Neither touches the library or the keyboard.
+        QVERIFY(!QFileInfo::exists(dir.path() + "/klc"));
+        QVERIFY(run.log.events.isEmpty());
+        QCOMPARE(run.exec({"nonsense"}), 1);
+        QVERIFY(run.err.startsWith("usage: klc-light"));
+    }
+
+    void frenchCatalogCoversBinderMessages()
+    {
+        QTemporaryDir dir;
+        write(dir.path() + "/language", "fr\n");
+        Translator translator(dir.path() + "/language", ":/i18n");
+        QVERIFY(translator.translate("SysfsBinder", "Add your user to the klc-light group (sudo usermod -aG klc-light $USER), then log in again.").contains("usermod -aG klc-light"));
     }
 
     void deviceKeyboardAbsent()

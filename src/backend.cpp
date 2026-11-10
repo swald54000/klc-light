@@ -7,6 +7,7 @@
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QSaveFile>
 #include <QThread>
 
 #include "layout.h"
@@ -859,9 +860,12 @@ void Backend::loadSavedColors() {
 
 void Backend::storeSavedColors() const {
     QDir().mkpath(QFileInfo(m_colorsPath).absolutePath());
-    QFile file(m_colorsPath);
-    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        file.write(QJsonDocument(QJsonArray::fromStringList(m_savedColors)).toJson(QJsonDocument::Compact));
+    // Written beside the file and renamed, so a crash never leaves it cut short.
+    QSaveFile file(m_colorsPath);
+    if (!file.open(QIODevice::WriteOnly) ||
+        file.write(QJsonDocument(QJsonArray::fromStringList(m_savedColors)).toJson(QJsonDocument::Compact)) < 0 ||
+        !file.commit())
+        qWarning("klc-light: cannot write %s: %s", qPrintable(m_colorsPath), qPrintable(file.errorString()));
 }
 
 void Backend::setSavedColor(int index, const QColor &color) {

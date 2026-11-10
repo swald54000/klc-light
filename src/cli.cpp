@@ -11,6 +11,7 @@
 #include "layout.h"
 #include "library.h"
 #include "protocol.h"
+#include "version.h"
 
 namespace {
 
@@ -63,10 +64,17 @@ int runCli(const QStringList &args, CliEnv &env) {
         return runList(args.mid(1), env);
     // `off` sends every key black through the same path as `apply`, and keeps `applied`.
     const bool off = args.value(0) == "off";
+    if (args.value(0) == "--version") {
+        *env.out << "klc-light " << kVersion << "\n";
+        return 0;
+    }
     if (args.value(0) != "apply" && !off) {
-        *env.err << "usage: klc-light [open] | klc-light apply [<name> | <file.json>] [--theme] [--check] [--json]\n"
-                    "       klc-light list [--json] | klc-light off [--check] [--json]\n";
-        return 1;
+        const bool help = args.value(0) == "--help" || args.value(0) == "-h";
+        *(help ? env.out : env.err)
+            << "usage: klc-light [open] | klc-light apply [<name> | <file.json>] [--theme] [--check] [--json]\n"
+               "       klc-light list [--json] | klc-light off [--check] [--json]\n"
+               "       klc-light --version | klc-light --help\n";
+        return help ? 0 : 1;
     }
     bool check = false, json = false;
     QString target;
