@@ -1,4 +1,4 @@
 #pragma once
 
 // The release, as pkgbuild/PKGBUILD's pkgver (checked by the tests).
-constexpr const char *kVersion = "0.5.0";
+constexpr const char *kVersion = "0.5.1";

@@ -277,6 +277,8 @@ QStringList validate(const Profile &profile, const Layout &layout) {
             claimed.insert(key);
         }
     }
+    if (profile.reactive.duration < 0 || profile.reactive.duration > 65535)
+        errors.append(QString("reactive: duration %1 out of range 0..65535").arg(profile.reactive.duration));
     if (animatedSlots(profile) > kMaxAnimatedSlots)
         errors.append(QString("effects: %1 animated effects, at most %2 in this version")
                           .arg(animatedSlots(profile)).arg(kMaxAnimatedSlots));
