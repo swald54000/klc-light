@@ -1704,6 +1704,53 @@ private slots:
         QVERIFY(!Library(dir.path() + "/klc").off());
     }
 
+    // At boot the keyboard comes back as it was left: off stays off, lit shows the
+    // applied profile again.
+    void cliRestoreKeepsOff()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        CliRun off(dir, paths);
+        QCOMPARE(off.exec({"off"}), 0);
+
+        CliRun boot(dir, paths);
+        QCOMPARE(boot.exec({"restore", "--json"}), 0);
+        QVERIFY(boot.out.contains("\"source\":\"off\""));
+        QCOMPARE(boot.log.packets.first().mid(4, 3).toHex(), QByteArray("000000"));
+        QVERIFY(Library(dir.path() + "/klc").off());
+        QCOMPARE(Library(dir.path() + "/klc").applied(), QString("Tron"));
+    }
+
+    void cliRestoreSendsApplied()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        CliRun boot(dir, paths);
+        QCOMPARE(boot.exec({"restore"}), 0);
+        QCOMPARE(boot.log.packets.first().mid(4, 3).toHex(), QByteArray("00f2ff"));
+        QVERIFY(!Library(dir.path() + "/klc").off());
+        // Like off, it takes no profile.
+        CliRun named(dir, paths);
+        QCOMPARE(named.exec({"restore", "Tron"}), 1);
+        QVERIFY(named.log.events.isEmpty());
+    }
+
+    // The duration is sent on two bytes: a larger one would be cut short without a word.
+    void reactiveDurationRange()
+    {
+        Profile profile;
+        profile.reactive.duration = 30; // older profiles
+        QVERIFY(validate(profile, Layout::gs76()).isEmpty());
+        profile.reactive.duration = 70000;
+        QCOMPARE(validate(profile, Layout::gs76()), QStringList{"reactive: duration 70000 out of range 0..65535"});
+        profile.reactive.duration = -1;
+        QCOMPARE(validate(profile, Layout::gs76()).size(), 1);
+    }
+
     void cliOffThenThemeTurnsOn()
     {
         QTemporaryDir dir;

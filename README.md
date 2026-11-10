@@ -63,7 +63,7 @@ setsid --fork bash -c 'set -o pipefail
 ```sh
 #!/bin/sh
 setsid --fork bash -c 'set -o pipefail
-  klc-light apply 2>&1 | systemd-cat -t klc-light
+  klc-light restore 2>&1 | systemd-cat -t klc-light
   [ $? -eq 2 ] && notify-send -u critical -a "KLC Light" "Keyboard lighting controller lost (USB error -71)" \
     "Shut the computer down completely, then start it again: a restart is not enough."' </dev/null >/dev/null 2>&1
 ```
@@ -102,6 +102,8 @@ duplicates, renames and deletes profiles and links the open one to a theme.
   `klc-light apply <file.json>` a profile file.
 - `klc-light off` turns every key off and remembers it; the applied profile is kept, and
   any later `apply` (a theme switch included) turns it back on.
+- `klc-light restore` puts the keyboard back as it was left, for the boot hook: the last
+  applied profile, or every key off if it was turned off.
 - `klc-light list` prints the profiles, `*` marking the applied one; `--json` adds each
   one's theme link, unreadable files and the active theme.
 - `--check` builds and validates without sending (`N packets OK`); `--json` gives

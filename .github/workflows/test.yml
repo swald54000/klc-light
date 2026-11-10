@@ -1,0 +1,22 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install dependencies
+        run: pacman -Syu --noconfirm --needed base-devel git qt6-base qt6-declarative qt6-wayland hidapi libxkbcommon xkeyboard-config ttf-dejavu
+      - uses: actions/checkout@v4
+      - name: Build
+        run: ./bin/build
+      - name: Test
+        run: ./bin/test

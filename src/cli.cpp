@@ -63,16 +63,21 @@ int runCli(const QStringList &args, CliEnv &env) {
     if (args.value(0) == "list")
         return runList(args.mid(1), env);
     // `off` sends every key black through the same path as `apply`, and keeps `applied`.
-    const bool off = args.value(0) == "off";
+    // `restore` (the boot hook) puts the keyboard back as it was left: black if it was
+    // turned off, else the applied profile, as `apply` would.
+    const bool restore = args.value(0) == "restore";
+    const bool takesProfile = args.value(0) == "apply";
+    bool off = args.value(0) == "off";
     if (args.value(0) == "--version") {
         *env.out << "klc-light " << kVersion << "\n";
         return 0;
     }
-    if (args.value(0) != "apply" && !off) {
+    if (!takesProfile && !off && !restore) {
         const bool help = args.value(0) == "--help" || args.value(0) == "-h";
         *(help ? env.out : env.err)
             << "usage: klc-light [open] | klc-light apply [<name> | <file.json>] [--theme] [--check] [--json]\n"
                "       klc-light list [--json] | klc-light off [--check] [--json]\n"
+               "       klc-light restore [--check] [--json]\n"
                "       klc-light --version | klc-light --help\n";
         return help ? 0 : 1;
     }
@@ -88,7 +93,7 @@ int runCli(const QStringList &args, CliEnv &env) {
             theme = true;
         else if (arg == "--experimental-reactive")
             ; // Needed before reactive lighting was validated; still accepted, now a no-op.
-        else if (arg.startsWith("--") || (off && arg != "--check" && arg != "--json"))
+        else if (arg.startsWith("--") || !takesProfile)
             return finish(env, json, false, QString("unknown option %1").arg(arg));
         else
             target = arg;
@@ -106,6 +111,8 @@ int runCli(const QStringList &args, CliEnv &env) {
         source.clear();
         Library lib(env.libraryDir);
         lib.migrate(env.paths);
+        if (restore)
+            off = lib.off();
         if (off) {
             Profile black;
             black.base.color = Qt::black;
