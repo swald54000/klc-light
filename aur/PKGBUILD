@@ -1,6 +1,6 @@
 # Maintainer: Sebastien WALD <contact@sebastien-wald.fr>
 pkgname=klc-light
-pkgver=0.5.0
+pkgver=0.5.1
 pkgrel=1
 pkgdesc='Per-key RGB lighting editor for MSI laptops with a SteelSeries KLC keyboard, made for Omarchy'
 arch=('x86_64')
@@ -9,7 +9,7 @@ license=('MIT')
 depends=('qt6-base' 'qt6-declarative' 'qt6-wayland' 'hidapi' 'libxkbcommon' 'systemd' 'gcc-libs' 'glibc')
 install=klc-light.install
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('a7072fe4f6230b8e8b7bf2c230f5a03c20c1b9b19166255a11ac77e640709194')
+sha256sums=('fc54c2796d12460b4076ed0190a158da116a03007cbaf38b35c9d4359b952744')
 
 build() {
   cd "$pkgname-$pkgver"

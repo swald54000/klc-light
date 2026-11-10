@@ -1,6 +1,6 @@
 pkgbase = klc-light
 	pkgdesc = Per-key RGB lighting editor for MSI laptops with a SteelSeries KLC keyboard, made for Omarchy
-	pkgver = 0.5.0
+	pkgver = 0.5.1
 	pkgrel = 1
 	url = https://github.com/swald54000/klc-light
 	install = klc-light.install
@@ -14,7 +14,7 @@ pkgbase = klc-light
 	depends = systemd
 	depends = gcc-libs
 	depends = glibc
-	source = klc-light-0.5.0.tar.gz::https://github.com/swald54000/klc-light/archive/refs/tags/v0.5.0.tar.gz
-	sha256sums = a7072fe4f6230b8e8b7bf2c230f5a03c20c1b9b19166255a11ac77e640709194
+	source = klc-light-0.5.1.tar.gz::https://github.com/swald54000/klc-light/archive/refs/tags/v0.5.1.tar.gz
+	sha256sums = fc54c2796d12460b4076ed0190a158da116a03007cbaf38b35c9d4359b952744
 
 pkgname = klc-light
