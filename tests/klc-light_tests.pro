@@ -1,6 +1,6 @@
 QT += core gui quick quickcontrols2 testlib
 CONFIG += c++17 testcase link_pkgconfig
-PKGCONFIG += hidapi-hidraw xkbcommon
+PKGCONFIG += hidapi-hidraw xkbcommon libpipewire-0.3
 TARGET = klc-light_tests
 TEMPLATE = app
 

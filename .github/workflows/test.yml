@@ -14,7 +14,7 @@ jobs:
     container: archlinux:latest
     steps:
       - name: Install dependencies
-        run: pacman -Syu --noconfirm --needed base-devel git qt6-base qt6-declarative qt6-wayland hidapi libxkbcommon xkeyboard-config ttf-dejavu
+        run: pacman -Syu --noconfirm --needed base-devel git qt6-base qt6-declarative qt6-wayland hidapi libxkbcommon libpipewire xkeyboard-config ttf-dejavu
       - uses: actions/checkout@v4
       # As an ordinary user: some tests rely on file permissions, which root ignores.
       - name: Build and test
