@@ -24,6 +24,7 @@
 #include "profile.h"
 #include "protocol.h"
 #include "spectrum.h"
+#include "spectrumrenderer.h"
 #include <cmath>
 #include "version.h"
 #include "themeprofile.h"
@@ -144,6 +145,21 @@ static int bandOf(const Spectrum &s, int bands, double hz)
         if (hz >= s.bandLowHz(b) && hz < s.bandLowHz(b + 1))
             return b;
     return -1;
+}
+
+static Profile plainProfile(const QColor &c)
+{
+    Profile p;
+    p.base.color = c;
+    return p;
+}
+static QColor frameColor(const Frame &f, const QString &id)
+{
+    const quint8 hid = Layout::gs76().byId(id)->hid;
+    for (const KeyColor &k : f)
+        if (k.hid == hid)
+            return k.color;
+    return QColor();
 }
 
 class KlcLightTests : public QObject {
@@ -1023,6 +1039,82 @@ private slots:
         spectrumOf(s, 100, 0.5, 30);
         spectrumOf(s, 100, 0.0, 1800); // one minute
         QVERIFY(spectrumOf(s, 100, 0.5, 3)[bandOf(s, 18, 100)] >= 0.9);
+    }
+
+    void rendererGridCoversTheKeyboard()
+    {
+        SpectrumRenderer r(Layout::gs76());
+        QList<int> perColumn(18, 0), perRow(6, 0);
+        for (const Key &k : Layout::gs76().keys()) {
+            QVERIFY(r.columnOf(k.id) >= 0 && r.columnOf(k.id) < 18);
+            QVERIFY(r.rowOf(k.id) >= 0 && r.rowOf(k.id) < 6);
+            ++perColumn[r.columnOf(k.id)];
+            ++perRow[r.rowOf(k.id)];
+        }
+        for (int n : perColumn)
+            QVERIFY(n >= 3);
+        for (int n : perRow)
+            QVERIFY(n >= 14);
+        QVERIFY(r.columnOf("KEY_ESC") < r.columnOf("KEY_F12"));
+        QCOMPARE(r.rowOf("KEY_ESC"), 0);
+        QCOMPARE(r.rowOf("KEY_SPACE"), 5);
+        QCOMPARE(r.columnOf("KEY_NOT_A_KEY"), -1);
+        QCOMPARE(r.rowOf("KEY_NOT_A_KEY"), -1);
+    }
+    void rendererSilenceIsBlack()
+    {
+        SpectrumRenderer r(Layout::gs76());
+        r.setProfile(plainProfile(QColor(10, 200, 30)));
+        const Frame f = r.render(QList<double>(18, 0.0));
+        QCOMPARE(f.size(), streamHids(Layout::gs76()).size());
+        for (int i = 0; i < f.size(); ++i) {
+            QCOMPARE(f[i].hid, streamHids(Layout::gs76())[i]);
+            QCOMPARE(f[i].color, QColor(Qt::black));
+        }
+    }
+    void rendererFullLevelShowsTheProfile()
+    {
+        Profile p = plainProfile(QColor(10, 200, 30));
+        p.keys.insert("KEY_Q", QColor(255, 0, 0));
+        SpectrumRenderer r(Layout::gs76());
+        r.setProfile(p);
+        const Frame f = r.render(QList<double>(18, 1.0));
+        QCOMPARE(frameColor(f, "KEY_Q"), QColor(255, 0, 0));
+        QCOMPARE(frameColor(f, "KEY_ESC"), QColor(10, 200, 30));
+        for (const KeyColor &k : f) {
+            const Key *key = Layout::gs76().byHid(k.hid);
+            if (!key || !key->visible)
+                QCOMPARE(k.color, QColor(Qt::black));
+        }
+    }
+    void rendererPartialLevelDimsTheTop()
+    {
+        SpectrumRenderer r(Layout::gs76());
+        r.setProfile(plainProfile(QColor(200, 100, 0)));
+        QList<double> levels(18, 0.0);
+        levels[r.columnOf("KEY_SPACE")] = 0.25; // h = 1.5 rows
+        const Frame f = r.render(levels);
+        for (const Key &k : Layout::gs76().keys()) {
+            if (Layout::gs76().lightSource(k.id) != k.id)
+                continue; // the power key has no code of its own: F1's output lights it
+            if (r.columnOf(k.id) != r.columnOf("KEY_SPACE"))
+                QCOMPARE(frameColor(f, k.id), QColor(Qt::black));
+            else if (r.rowOf(k.id) == 5)
+                QCOMPARE(frameColor(f, k.id), QColor(200, 100, 0));
+            else if (r.rowOf(k.id) == 4)
+                QCOMPARE(frameColor(f, k.id), QColor(100, 50, 0));
+            else
+                QCOMPARE(frameColor(f, k.id), QColor(Qt::black));
+        }
+    }
+    void rendererHonoursBrightness()
+    {
+        Profile p = plainProfile(QColor(200, 100, 0));
+        p.brightness = 50;
+        SpectrumRenderer r(Layout::gs76());
+        r.setProfile(p);
+        QCOMPARE(frameColor(r.render(QList<double>(18, 1.0)), "KEY_SPACE"), Preview(p, Layout::gs76()).colorAt("KEY_SPACE", 0));
+        QVERIFY(Preview(p, Layout::gs76()).colorAt("KEY_SPACE", 0) != QColor(200, 100, 0));
     }
 
     void streamEnterPackets_matchStaticWithMaskTwo()
