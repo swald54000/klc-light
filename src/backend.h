@@ -16,7 +16,6 @@
 #include "themeprofile.h"
 
 // Carried from the sending thread back to the editor.
-Q_DECLARE_METATYPE(ApplyResult)
 
 // The editor's state: the open profile (a Document of named key groups), the key selection,
 // undo history, and applying (save to the library, then one send to the keyboard on a worker

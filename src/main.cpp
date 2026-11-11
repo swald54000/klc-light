@@ -20,6 +20,7 @@
 #include "sysfsbinder.h"
 #include "theme.h"
 #include "translator.h"
+#include "visualizer.h"
 
 namespace {
 
@@ -49,6 +50,9 @@ int runCommand(int argc, char *argv[]) {
 
 int main(int argc, char *argv[]) {
     const QString command = argc > 1 ? QString::fromLocal8Bit(argv[1]) : QString();
+    // The visualizer's service keeps an event loop; every other command runs and returns.
+    if (command == "visualizer" && argc > 2 && QString::fromLocal8Bit(argv[2]) == "run")
+        return runVisualizer(argc, argv);
     if (!command.isEmpty() && command != "open")
         return runCommand(argc, argv);
 

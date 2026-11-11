@@ -26,6 +26,11 @@
 #include "spectrum.h"
 #include "spectrumrenderer.h"
 #include "streamsession.h"
+#include "audiosource.h"
+#include "visualizer.h"
+#include <future>
+#include <QLocalServer>
+#include <QLocalSocket>
 #include <cmath>
 #include "version.h"
 #include "themeprofile.h"
@@ -169,6 +174,76 @@ static Frame plainFrame(const QColor &color)
     for (quint8 hid : streamHids(Layout::gs76()))
         frame.append({hid, color});
     return frame;
+}
+
+// A steady tone instead of the sound card.
+class SineSource : public AudioSource {
+public:
+    double hz = 100, amplitude = 0.5;
+    bool startOk = true;
+    int started = 0;
+    qint64 n = 0;
+    bool start(QString *error) override
+    {
+        ++started;
+        if (!startOk)
+            *error = "no audio server";
+        return startOk;
+    }
+    void stop() override {}
+    int sampleRate() const override { return 48000; }
+    int read(float *out, int max) override
+    {
+        const int count = qMin(max, 1600);
+        for (int i = 0; i < count; ++i)
+            out[i] = float(amplitude * std::sin(2 * M_PI * hz * double(n++) / 48000));
+        return count;
+    }
+};
+
+// Asks the visualizer's socket from another thread, as another process would, while this
+// thread keeps serving the socket.
+static QString askVisualizer(const QString &socket, const QString &line)
+{
+    auto answer = std::async(std::launch::async, [&] { return visualizerRequest(socket, line); });
+    while (answer.wait_for(std::chrono::milliseconds(1)) != std::future_status::ready)
+        QCoreApplication::processEvents();
+    return answer.get();
+}
+
+// The color the last frame sent gives a key; invalid if no frame names it.
+static QColor lastStreamColor(const QList<QByteArray> &packets, const QString &keyId)
+{
+    const quint8 hid = Layout::gs76().byId(keyId)->hid;
+    for (int p = packets.size() - 1; p >= 0; --p) {
+        const QByteArray &d = packets[p];
+        if (quint8(d.at(0)) != 0x0c)
+            continue;
+        for (int i = 0; i < quint8(d.at(2)); ++i)
+            if (quint8(d.at(4 + i * 4)) == hid)
+                return QColor(quint8(d.at(5 + i * 4)), quint8(d.at(6 + i * 4)), quint8(d.at(7 + i * 4)));
+    }
+    return QColor();
+}
+
+// A bottom-row key in the column of the band a tone falls in.
+static QString bottomKeyOfTone(double hz)
+{
+    const SpectrumRenderer r(Layout::gs76());
+    const Spectrum s(48000, SpectrumRenderer::Columns);
+    const int column = bandOf(s, SpectrumRenderer::Columns, hz);
+    for (const Key &k : Layout::gs76().keys())
+        if (r.columnOf(k.id) == column && r.rowOf(k.id) == 5 && Layout::gs76().lightSource(k.id) == k.id)
+            return k.id;
+    return {};
+}
+
+static QList<QByteArray> packetData(const QList<Packet> &packets)
+{
+    QList<QByteArray> data;
+    for (const Packet &p : packets)
+        data << p.data;
+    return data;
 }
 
 class KlcLightTests : public QObject {
@@ -1238,6 +1313,224 @@ private slots:
             s.show(plainFrame(Qt::black));
         QCOMPARE(log.packets.size(), 5); // the enter packets already left every key black
         s.stop({});
+    }
+
+    void visualizerStreamsAndRestores()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        VisRun v(dir, paths);
+        QCOMPARE(v.service.start().error, ApplyError::None);
+        QVERIFY(v.service.running());
+        v.ticks(30);
+        QVERIFY(!bottomKeyOfTone(100).isEmpty());
+        QCOMPARE(lastStreamColor(v.run.log.packets, bottomKeyOfTone(100)), QColor("#00F2FF"));
+        QCOMPARE(lastStreamColor(v.run.log.packets, bottomKeyOfTone(5000)), QColor(Qt::black));
+        v.service.stop();
+        QVERIFY(!v.service.running());
+        const QList<QByteArray> restore = profilePackets(dir, "Tron");
+        QVERIFY(!restore.isEmpty());
+        QCOMPARE(v.run.log.packets.mid(v.run.log.packets.size() - restore.size()), restore);
+        QCOMPARE(v.run.log.events.count("bind"), 1);
+        QCOMPARE(v.run.log.events.last(), QString("unbind"));
+    }
+    void visualizerRefusesWithoutAProfile()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF"); // in the library, but neither applied nor the theme's
+        VisRun v(dir, paths);
+        const ApplyResult result = v.service.start();
+        QCOMPARE(result.error, ApplyError::Invalid);
+        QCOMPARE(result.message, QString("Apply a profile before starting the visualizer."));
+        QVERIFY(v.run.log.events.isEmpty());
+        QCOMPARE(v.audio.started, 0);
+        QVERIFY(!v.service.running());
+    }
+    void visualizerRefusesWhenTheAppliedProfileIsGone()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        QVERIFY(QFile::remove(Library(dir.path() + "/klc").entries().first().path));
+        VisRun v(dir, paths);
+        QCOMPARE(v.service.start().error, ApplyError::Invalid);
+        QVERIFY(v.run.log.events.isEmpty());
+        QCOMPARE(v.audio.started, 0);
+    }
+    void visualizerFailsBeforeAttachingWithoutAudio()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        VisRun v(dir, paths);
+        v.audio.startOk = false;
+        const ApplyResult result = v.service.start();
+        QCOMPARE(result.error, ApplyError::Invalid);
+        QVERIFY(result.message.contains("no audio server"));
+        QVERIFY(v.run.log.events.isEmpty());
+    }
+    void visualizerReloadRecolours()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        addProfile(dir, "Ember", "#FF2000");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        VisRun v(dir, paths);
+        QCOMPARE(v.service.start().error, ApplyError::None);
+        v.ticks(30);
+        Library(dir.path() + "/klc").setApplied("Ember");
+        QCOMPARE(askVisualizer(v.socket, "reload"), QString("ok"));
+        v.ticks(30);
+        QCOMPARE(lastStreamColor(v.run.log.packets, bottomKeyOfTone(100)), QColor("#FF2000"));
+        v.service.stop();
+        const QList<QByteArray> restore = profilePackets(dir, "Ember");
+        QCOMPARE(v.run.log.packets.mid(v.run.log.packets.size() - restore.size()), restore);
+    }
+    void visualizerStopRestoresBlackWhenOff()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        VisRun v(dir, paths);
+        QCOMPARE(v.service.start().error, ApplyError::None);
+        Library(dir.path() + "/klc").setOff(true);
+        QCOMPARE(askVisualizer(v.socket, "reload"), QString("ok"));
+        v.ticks(30);
+        QCOMPARE(lastStreamColor(v.run.log.packets, bottomKeyOfTone(100)), QColor("#00F2FF"));
+        v.service.stop();
+        const QList<QByteArray> black = blackPackets();
+        QCOMPARE(v.run.log.packets.mid(v.run.log.packets.size() - black.size()), black);
+    }
+    void visualizerSocketAnswers()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        VisRun v(dir, paths);
+        QCOMPARE(visualizerRequest(v.socket, "ping"), QString()); // not started yet
+        QCOMPARE(v.service.start().error, ApplyError::None);
+        QCOMPARE(askVisualizer(v.socket, "ping"), QString("ok"));
+        QCOMPARE(askVisualizer(v.socket, "nonsense"), QString("error"));
+        v.service.stop();
+        QCOMPARE(visualizerRequest(v.socket, "ping"), QString());
+    }
+    void visualizerReplacesAStaleSocket()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        VisRun v(dir, paths);
+        write(v.socket, "left by a crash");
+        QCOMPARE(v.service.start().error, ApplyError::None);
+        QCOMPARE(askVisualizer(v.socket, "ping"), QString("ok"));
+        v.service.stop();
+    }
+    void visualizerStreamsFramesToSubscribers()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        VisRun v(dir, paths);
+        QCOMPARE(v.service.start().error, ApplyError::None);
+        QLocalSocket client;
+        client.connectToServer(v.socket);
+        QTRY_COMPARE(client.state(), QLocalSocket::ConnectedState);
+        client.write("frames\n");
+        QTRY_VERIFY(client.canReadLine());
+        QCOMPARE(client.readLine().trimmed(), QByteArray("ok"));
+        v.ticks(30);
+        QTRY_VERIFY(client.canReadLine());
+        const QByteArray line = client.readLine().trimmed();
+        QVERIFY(line.startsWith("frame "));
+        QCOMPARE(line.mid(6).size(), 113 * 8);
+        v.service.stop();
+        QTRY_COMPARE(client.state(), QLocalSocket::UnconnectedState);
+    }
+    void visualizerEmitsFailedAndDetaches()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        VisRun v(dir, paths);
+        QSignalSpy failed(&v.service, &VisualizerService::failed);
+        QCOMPARE(v.service.start().error, ApplyError::None);
+        v.run.transport.failAt = 6; // the first frame packet
+        v.ticks(30);
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(failed.first().first().value<ApplyResult>().error, ApplyError::SendFailed);
+        QVERIFY(!v.service.running());
+        QCOMPARE(v.run.log.events.last(), QString("unbind"));
+        const int sent = v.run.log.packets.size();
+        v.ticks(30);
+        v.service.stop();
+        QCOMPARE(v.run.log.packets.size(), sent);
+        QCOMPARE(visualizerRequest(v.socket, "ping"), QString());
+    }
+    void resolveProfileMatchesRestore()
+    {
+        // The applied profile.
+        {
+            QTemporaryDir dir;
+            const ThemePaths paths = fakeTheme(dir, "tron");
+            addProfile(dir, "Tron", "#00F2FF", "tron");
+            addProfile(dir, "Ember", "#FF2000");
+            Library(dir.path() + "/klc").setApplied("Ember");
+            const ResolvedProfile r = resolveProfile(dir.path() + "/klc", paths);
+            QVERIFY(r.profile && !r.off && r.errors.isEmpty());
+            QCOMPARE(r.name, QString("Ember"));
+            CliRun run(dir, paths);
+            QCOMPARE(run.exec({"restore"}), 0);
+            QCOMPARE(run.log.packets, packetData(buildPackets(*r.profile, Layout::gs76()).packets));
+        }
+        // Turned off: the profile is still known.
+        {
+            QTemporaryDir dir;
+            const ThemePaths paths = fakeTheme(dir, "tron");
+            addProfile(dir, "Tron", "#00F2FF", "tron");
+            Library(dir.path() + "/klc").setApplied("Tron");
+            Library(dir.path() + "/klc").setOff(true);
+            const ResolvedProfile r = resolveProfile(dir.path() + "/klc", paths);
+            QVERIFY(r.profile && r.off);
+            QCOMPARE(r.name, QString("Tron"));
+        }
+        // The applied profile is gone: the theme's.
+        {
+            QTemporaryDir dir;
+            const ThemePaths paths = fakeTheme(dir, "tron");
+            addProfile(dir, "Tron", "#00F2FF", "tron");
+            addProfile(dir, "Ember", "#FF2000");
+            Library(dir.path() + "/klc").setApplied("Ember");
+            QString error;
+            QVERIFY(Library(dir.path() + "/klc").remove("Ember", &error));
+            const ResolvedProfile r = resolveProfile(dir.path() + "/klc", paths);
+            QVERIFY(r.profile);
+            QCOMPARE(r.name, QString("Tron"));
+            CliRun run(dir, paths);
+            QCOMPARE(run.exec({"restore"}), 0);
+            QCOMPARE(run.log.packets, packetData(buildPackets(*r.profile, Layout::gs76()).packets));
+        }
+        // Nothing at all.
+        {
+            QTemporaryDir dir;
+            const ThemePaths paths = fakeTheme(dir, "tron");
+            addProfile(dir, "Tron", "#00F2FF"); // neither applied nor the theme's
+            const ResolvedProfile r = resolveProfile(dir.path() + "/klc", paths);
+            QVERIFY(!r.profile);
+            CliRun run(dir, paths);
+            QCOMPARE(run.exec({"restore"}), 0);
+            QVERIFY(run.log.packets.isEmpty());
+        }
     }
 
     void streamEnterPackets_matchStaticWithMaskTwo()
@@ -4715,6 +5008,33 @@ private:
     {
         return Device(transport, binder, dir.path(), [&log](int ms) { log.sleeps << ms; log.now += ms; },
                       [&log] { return log.now; });
+    }
+
+    struct VisRun {
+        VisRun(const QTemporaryDir &dir, const ThemePaths &paths)
+            : run(dir, paths), socket(dir.path() + "/visualizer.sock"),
+              service(run.device, audio, Layout::gs76(), dir.path() + "/klc", paths, socket) {}
+        void ticks(int n)
+        {
+            for (int i = 0; i < n; ++i)
+                service.tick();
+        }
+        CliRun run;
+        SineSource audio;
+        QString socket;
+        VisualizerService service;
+    };
+    static QList<QByteArray> profilePackets(const QTemporaryDir &dir, const QString &name)
+    {
+        QStringList errors;
+        const auto doc = Library(dir.path() + "/klc").load(name, &errors);
+        return doc ? packetData(buildPackets(lighting(*doc), Layout::gs76()).packets) : QList<QByteArray>();
+    }
+    static QList<QByteArray> blackPackets()
+    {
+        Profile black;
+        black.base.color = Qt::black;
+        return packetData(buildPackets(black, Layout::gs76()).packets);
     }
 
     static ThemePaths fakeTheme(const QTemporaryDir &dir, const QString &name)

@@ -139,5 +139,7 @@
  "Add to group": "Ajouter au groupe",
  "Remove selected keys": "Retirer les touches sélectionnées",
  "Delete group": "Supprimer le groupe",
+ "Apply a profile before starting the visualizer.": "Appliquez un profil avant de lancer l'égaliseur.",
+ "Could not listen to the sound: %1": "Impossible d'écouter le son : %1",
  "“%1” will be deleted.": "« %1 » sera supprimé."
 }

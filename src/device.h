@@ -2,6 +2,7 @@
 
 #include <QByteArray>
 #include <QList>
+#include <QMetaType>
 #include <QString>
 #include <functional>
 #include <memory>
@@ -94,3 +95,6 @@ private:
     std::function<void(int)> m_sleepMs;
     std::function<qint64()> m_nowMs;
 };
+
+// Carried by signals: the editor's send result, the visualizer's failure.
+Q_DECLARE_METATYPE(ApplyResult)

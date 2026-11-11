@@ -32,7 +32,31 @@ int finish(CliEnv &env, bool json, bool ok, const QString &message, int packets 
     return ok ? 0 : 1;
 }
 
+// The library profile to send when none is named: the applied one, or the active theme's
+// when asked for or when the applied one is stale (deleted since). Empty if there is none.
+QString defaultProfileName(const Library &lib, const ThemePaths &paths, bool themeOnly) {
+    if (!themeOnly && lib.names().contains(lib.applied(), Qt::CaseInsensitive))
+        return lib.applied();
+    const QString active = QString::fromUtf8(readFileOrEmpty(paths.themeName)).trimmed();
+    return lib.profileForTheme(active);
+}
+
 } // namespace
+
+ResolvedProfile resolveProfile(const QString &libraryDir, const ThemePaths &paths) {
+    ResolvedProfile resolved;
+    Library lib(libraryDir);
+    lib.migrate(paths);
+    resolved.off = lib.off();
+    const QString name = defaultProfileName(lib, paths, false);
+    if (name.isEmpty())
+        return resolved;
+    if (const auto doc = lib.load(name, &resolved.errors)) {
+        resolved.profile = lighting(*doc);
+        resolved.name = doc->name;
+    }
+    return resolved;
+}
 
 // `klc-light list [--json]`: the library, the applied profile and the active theme, for the
 // Omarchy bar widget and scripts. Sends nothing.
@@ -124,14 +148,7 @@ int runCli(const QStringList &args, CliEnv &env) {
                 profile = lighting(*doc);
             source = target;
         } else {
-            QString name = target;
-            // A stale applied profile (deleted since) falls back to the theme's, like --theme.
-            if (name.isEmpty() && !theme && lib.names().contains(lib.applied(), Qt::CaseInsensitive))
-                name = lib.applied();
-            if (name.isEmpty()) {
-                QString active = QString::fromUtf8(readFileOrEmpty(env.paths.themeName)).trimmed();
-                name = lib.profileForTheme(active);
-            }
+            const QString name = target.isEmpty() ? defaultProfileName(lib, env.paths, theme) : target;
             // No profile for the theme is not an error: there is just nothing to send.
             if (!name.isEmpty()) {
                 const auto doc = lib.load(name, &built.errors);
