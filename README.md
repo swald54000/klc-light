@@ -80,8 +80,8 @@ omarchy plugin add https://github.com/swald54000/omarchy-klc-light.git --enable
 
 A keyboard icon (dimmed while the lighting is off) whose tooltip names the applied
 profile. Click it for the profile list (a click applies one), right-click to turn the
-keyboard off, middle-click to turn it back on; the panel also opens the editor. It
-follows what the editor and the hooks apply.
+keyboard off, middle-click to turn it back on; the panel also opens the editor and starts
+or stops the music visualizer. It follows what the editor and the hooks apply.
 
 ### Music visualizer
 
