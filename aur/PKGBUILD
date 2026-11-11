@@ -1,15 +1,15 @@
 # Maintainer: Sebastien WALD <contact@sebastien-wald.fr>
 pkgname=klc-light
-pkgver=0.5.1
+pkgver=0.6.0
 pkgrel=1
 pkgdesc='Per-key RGB lighting editor for MSI laptops with a SteelSeries KLC keyboard, made for Omarchy'
 arch=('x86_64')
 url='https://github.com/swald54000/klc-light'
 license=('MIT')
-depends=('qt6-base' 'qt6-declarative' 'qt6-wayland' 'hidapi' 'libxkbcommon' 'systemd' 'gcc-libs' 'glibc')
+depends=('qt6-base' 'qt6-declarative' 'qt6-wayland' 'hidapi' 'libxkbcommon' 'libpipewire' 'systemd' 'gcc-libs' 'glibc')
 install=klc-light.install
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('fc54c2796d12460b4076ed0190a158da116a03007cbaf38b35c9d4359b952744')
+sha256sums=('68826844533f7df87d743cc2e858e37bc72d7a0ff49b36f09fc52f0fbcb37a6b')
 
 build() {
   cd "$pkgname-$pkgver"
@@ -29,4 +29,5 @@ package() {
   install -Dm644 pkgbuild/klc-light.desktop "$pkgdir/usr/share/applications/klc-light.desktop"
   install -Dm644 pkgbuild/70-klc-light.rules "$pkgdir/usr/lib/udev/rules.d/70-klc-light.rules"
   install -Dm644 pkgbuild/klc-light.sysusers "$pkgdir/usr/lib/sysusers.d/klc-light.conf"
+  install -Dm644 pkgbuild/klc-light-visualizer.service "$pkgdir/usr/lib/systemd/user/klc-light-visualizer.service"
 }
