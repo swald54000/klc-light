@@ -320,3 +320,37 @@ Sent here to all 113 keys of the four region packets (mask 2, black, 30 ms apart
 A normal `klc-light restore` after each stream showed the profile again. GG caps a frame
 at `number-of-elements` keys, 110 for the GE63 family the GS76 derives from, which fits
 113 failing; the exact limit, and streams longer than 10 s, are not measured.
+
+## The music visualizer on the GS76 (2026-11-11)
+
+klc-light 0.6.0, installed as a package, the visualizer started and stopped through its
+user unit unless said otherwise. The kernel logged nothing about the controller in any of
+these runs, and it was left detached (`authorized` 0) after each.
+
+| run | seen on the keyboard | on the system |
+|---|---|---|
+| one minute of music, then `visualizer off` | the spectrum; the applied profile back at once | `on` returns in 0.35 s, `off` in 0.28 s |
+| `klc-light apply Ocean` 15 s into the stream (Jarvis applied) | the spectrum takes Ocean's colors with no break; Ocean shown after `off` | `apply` returns in 0.07 s, nothing sent by it |
+| `kill -9` of the service 10 s into the stream | the profile back by itself | unit `failed` (signal), `ExecStopPost` ran `klc-light restore`: detached within a second |
+| suspend (s2idle) for 21 s with the stream running, then wake | the profile shown before sleeping, the spectrum back a few seconds after waking | detached 2 s after waking, attached again 4 s later, unit still active |
+
+So a `restore` after the service is killed mid-stream does take the controller out of
+host-stream mode, and the controller comes back after a suspend when it was detached
+first and attached again five seconds after waking. Holding it attached across a suspend
+is still not measured.
+
+### Tuning the spectrum
+
+With one reference for all bands over 30 dB (the first version), only the five leftmost
+columns ever lit on real music: its energy is in the bass. Replayed on a 20 s recording of
+that music, the mean bar height per column, out of 6:
+
+| version | columns, left to right |
+|---|---|
+| first | 3.5 3.6 3.7 4.2 2.8 0.7 0.3 0.4 0.2 0.5 0.4 0.3 0.1 0.1 0.0 0.0 0.0 0.0 |
+| + 4.5 dB per octave, 4096-sample window | 2.3 3.2 3.7 4.4 3.5 1.7 1.6 2.0 2.0 3.0 3.2 3.3 3.3 3.6 3.7 3.7 3.6 2.9 |
+| + each band against its own peak (forgotten at 6 dB/s), 15 dB range | 3.5 3.5 2.8 3.4 4.4 2.6 2.2 3.1 2.9 4.3 3.7 3.8 4.2 4.7 4.6 3.4 4.3 4.1 |
+| + peaks forgotten at 0.6 dB/s, 12 dB range (kept) | 3.2 2.7 2.4 2.6 3.0 2.1 1.6 2.6 1.5 3.5 2.7 2.4 2.4 3.7 3.6 2.5 3.4 2.2 |
+
+On the keyboard, in the same order: "moves, badly spread", "better, still hollow", "too
+full", "good". One piece of music only; the constants are in `src/spectrum.h`.
