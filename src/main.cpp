@@ -1,5 +1,6 @@
 // klc-light — edits the per-key lighting of the MSI GS76 keyboard, one profile per Omarchy theme.
 
+#include <QProcess>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QQmlApplicationEngine>
@@ -43,6 +44,14 @@ int runCommand(int argc, char *argv[]) {
     QTextStream out(stdout), err(stderr);
     CliEnv env{ThemePaths::standard(), QDir::homePath() + "/.config/klc-light", &device, &out, &err,
                qEnvironmentVariableIntValue("KLC_LIGHT_FAKE_DEVICE") == 1};
+    env.visualizerSocket = visualizerSocketPath(runtime);
+    env.systemctl = [](const QStringList &args) { return QProcess::execute("systemctl", QStringList{"--user"} + args); };
+    env.systemctlOutput = [](const QStringList &args) {
+        QProcess process;
+        process.start("systemctl", QStringList{"--user"} + args);
+        process.waitForFinished(-1);
+        return QString::fromUtf8(process.readAllStandardOutput());
+    };
     return runCli(args, env);
 }
 

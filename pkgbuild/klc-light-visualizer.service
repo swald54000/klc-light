@@ -1,0 +1,13 @@
+[Unit]
+Description=KLC Light music visualizer
+Documentation=https://github.com/swald54000/klc-light
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/klc-light visualizer run
+# Only after a crash or a kill: an orderly exit has already put the profile back, and
+# after a refused send nothing more may be sent to the controller.
+ExecStopPost=/bin/sh -c '[ "$EXIT_CODE" = exited ] || exec /usr/bin/klc-light restore'
+Restart=no
+TimeoutStartSec=30
+TimeoutStopSec=30

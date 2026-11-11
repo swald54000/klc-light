@@ -35,6 +35,11 @@ private:
 
 } // namespace
 
+QString keyboardAbsentMessage() {
+    return QCoreApplication::translate("Device", "The keyboard's lighting controller is not on the USB bus (error -71 after a restart). "
+                                                 "Shut the computer down completely, then start it again: a restart is not enough.");
+}
+
 Device::Device(Transport &transport, Binder &binder, QString runtimeDir, std::function<void(int)> sleepMs,
                std::function<qint64()> nowMs)
     : m_transport(transport), m_binder(binder), m_runtimeDir(std::move(runtimeDir)), m_sleepMs(std::move(sleepMs)),
@@ -112,9 +117,7 @@ ApplyResult Device::attach() {
         release();
         // msi-kbd-usb reports the controller itself missing from the bus with its USB id.
         if (error.contains("1038:113a"))
-            return {ApplyError::KeyboardAbsent,
-                    QCoreApplication::translate("Device", "The keyboard's lighting controller is not on the USB bus (error -71 after a restart). "
-                                                          "Shut the computer down completely, then start it again: a restart is not enough.")};
+            return {ApplyError::KeyboardAbsent, keyboardAbsentMessage()};
         const bool missing = error.contains("not found") || error.contains("missing");
         return {missing ? ApplyError::BinderMissing : ApplyError::BindFailed,
                 QCoreApplication::translate("Device", "Could not attach the keyboard: %1").arg(error)};

@@ -96,5 +96,8 @@ private:
     std::function<qint64()> m_nowMs;
 };
 
+// What every command says when the controller is missing from the USB bus.
+QString keyboardAbsentMessage();
+
 // Carried by signals: the editor's send result, the visualizer's failure.
 Q_DECLARE_METATYPE(ApplyResult)

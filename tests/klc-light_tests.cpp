@@ -246,6 +246,32 @@ static QList<QByteArray> packetData(const QList<Packet> &packets)
     return data;
 }
 
+// Stands for the visualizer's socket: records each line it gets and answers it.
+class LineServer : public QObject {
+public:
+    explicit LineServer(const QString &path, const QByteArray &answer = "ok")
+    {
+        QLocalServer::removeServer(path);
+        m_server.listen(path);
+        connect(&m_server, &QLocalServer::newConnection, this, [this, answer] {
+            while (QLocalSocket *client = m_server.nextPendingConnection()) {
+                clients << client;
+                connect(client, &QLocalSocket::readyRead, this, [this, client, answer] {
+                    while (client->canReadLine()) {
+                        lines << QString::fromUtf8(client->readLine()).trimmed();
+                        client->write(answer + "\n");
+                    }
+                });
+            }
+        });
+    }
+    QStringList lines;
+    QList<QLocalSocket *> clients;
+
+private:
+    QLocalServer m_server;
+};
+
 class KlcLightTests : public QObject {
     Q_OBJECT
 
@@ -1531,6 +1557,176 @@ private slots:
             QCOMPARE(run.exec({"restore"}), 0);
             QVERIFY(run.log.packets.isEmpty());
         }
+    }
+
+    void cliVisualizerOnStartsTheUnit()
+    {
+        QTemporaryDir dir;
+        UnitRun u(dir, fakeTheme(dir, "tron"));
+        QCOMPARE(u.run.exec({"visualizer", "on"}), 0);
+        QCOMPARE(u.calls, QStringList{"start klc-light-visualizer.service"});
+        QVERIFY(u.run.log.events.isEmpty());
+    }
+    void cliVisualizerOnReportsAMissingKeyboard()
+    {
+        QTemporaryDir dir;
+        UnitRun u(dir, fakeTheme(dir, "tron"), 1, "2");
+        QCOMPARE(u.run.exec({"visualizer", "on"}), 2);
+        QVERIFY2(u.run.err.contains("not on the USB bus"), qPrintable(u.run.err));
+        QCOMPARE(u.calls.value(1), QString("show -p ExecMainStatus --value klc-light-visualizer.service"));
+    }
+    void cliVisualizerOnReportsOtherFailures()
+    {
+        QTemporaryDir dir;
+        UnitRun u(dir, fakeTheme(dir, "tron"), 1, "1");
+        QCOMPARE(u.run.exec({"visualizer", "on"}), 1);
+        QVERIFY2(u.run.err.contains("journalctl --user -u klc-light-visualizer"), qPrintable(u.run.err));
+        UnitRun j(dir, fakeTheme(dir, "tron"), 1, "1");
+        QCOMPARE(j.run.exec({"visualizer", "on", "--json"}), 1);
+        const QJsonObject result = QJsonDocument::fromJson(j.run.out.toUtf8()).object();
+        QCOMPARE(result["ok"].toBool(), false);
+        QVERIFY(result["error"].toString().contains("journalctl"));
+        QVERIFY(j.run.err.isEmpty());
+    }
+    void cliVisualizerOffStopsTheUnit()
+    {
+        QTemporaryDir dir;
+        UnitRun u(dir, fakeTheme(dir, "tron"));
+        QCOMPARE(u.run.exec({"visualizer", "off"}), 0);
+        QCOMPARE(u.calls, QStringList{"stop klc-light-visualizer.service"});
+    }
+    void cliVisualizerRejectsUnknownWords()
+    {
+        QTemporaryDir dir;
+        for (const QStringList &args : {QStringList{"visualizer"}, QStringList{"visualizer", "maybe"},
+                                        QStringList{"visualizer", "on", "--loud"}}) {
+            UnitRun u(dir, fakeTheme(dir, "tron"));
+            QCOMPARE(u.run.exec(args), 1);
+            QVERIFY(u.run.err.contains("usage:"));
+            QVERIFY(u.calls.isEmpty());
+        }
+    }
+    void cliHelpNamesTheVisualizer()
+    {
+        QTemporaryDir dir;
+        CliRun run(dir, fakeTheme(dir, "tron"));
+        QCOMPARE(run.exec({"--help"}), 0);
+        QVERIFY(run.out.contains("klc-light visualizer on|off [--json]"));
+    }
+    void cliListReportsTheVisualizer()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        UnitRun active(dir, paths, 0);
+        QCOMPARE(active.run.exec({"list", "--json"}), 0);
+        QCOMPARE(QJsonDocument::fromJson(active.run.out.toUtf8()).object()["visualizer"], QJsonValue(true));
+        QCOMPARE(active.calls, QStringList{"is-active --quiet klc-light-visualizer.service"});
+        UnitRun inactive(dir, paths, 3);
+        QCOMPARE(inactive.run.exec({"list", "--json"}), 0);
+        QCOMPARE(QJsonDocument::fromJson(inactive.run.out.toUtf8()).object()["visualizer"], QJsonValue(false));
+        CliRun plain(dir, paths); // no systemctl at all
+        QCOMPARE(plain.exec({"list", "--json"}), 0);
+        QCOMPARE(QJsonDocument::fromJson(plain.out.toUtf8()).object()["visualizer"], QJsonValue(false));
+    }
+    void cliApplyDuringTheStreamOnlyRecords()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        addProfile(dir, "Ember", "#FF2000");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        Library(dir.path() + "/klc").setOff(true);
+        LineServer server(dir.path() + "/visualizer.sock");
+        CliRun run(dir, paths);
+        run.env.visualizerSocket = dir.path() + "/visualizer.sock";
+        QCOMPARE(execServed(run, {"apply", "Ember"}), 0);
+        QVERIFY(run.log.events.isEmpty());
+        QCOMPARE(Library(dir.path() + "/klc").applied(), QString("Ember"));
+        QVERIFY(!Library(dir.path() + "/klc").off());
+        QCOMPARE(server.lines, QStringList({"ping", "reload"}));
+    }
+    void cliOffDuringTheStreamOnlyRecords()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        LineServer server(dir.path() + "/visualizer.sock");
+        CliRun run(dir, paths);
+        run.env.visualizerSocket = dir.path() + "/visualizer.sock";
+        QCOMPARE(execServed(run, {"off"}), 0);
+        QVERIFY(run.log.events.isEmpty());
+        QVERIFY(Library(dir.path() + "/klc").off());
+        QCOMPARE(Library(dir.path() + "/klc").applied(), QString("Tron"));
+        QCOMPARE(server.lines, QStringList({"ping", "reload"}));
+    }
+    void cliRestoreDuringTheStreamDoesNothing()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        LineServer server(dir.path() + "/visualizer.sock");
+        CliRun run(dir, paths);
+        run.env.visualizerSocket = dir.path() + "/visualizer.sock";
+        QCOMPARE(execServed(run, {"restore"}), 0);
+        QVERIFY(run.log.events.isEmpty());
+        QCOMPARE(server.lines, QStringList({"ping"}));
+    }
+    void cliApplyInvalidDuringTheStreamChangesNothing()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        LineServer server(dir.path() + "/visualizer.sock");
+        CliRun run(dir, paths);
+        run.env.visualizerSocket = dir.path() + "/visualizer.sock";
+        QCOMPARE(execServed(run, {"apply", "No Such Profile"}), 1);
+        QVERIFY(!run.err.isEmpty());
+        QVERIFY(run.log.events.isEmpty());
+        QCOMPARE(Library(dir.path() + "/klc").applied(), QString("Tron"));
+        QCOMPARE(server.lines, QStringList({"ping"}));
+    }
+    // A profile file is not in the library: the visualizer could neither show it nor give
+    // it back, so saying "applied" would be a lie.
+    void cliApplyFileDuringTheStreamIsRefused()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        const QString file = Library(dir.path() + "/klc").entries().first().path;
+        LineServer server(dir.path() + "/visualizer.sock");
+        CliRun run(dir, paths);
+        run.env.visualizerSocket = dir.path() + "/visualizer.sock";
+        QCOMPARE(execServed(run, {"apply", file}), 1);
+        QVERIFY2(run.err.contains("klc-light visualizer off"), qPrintable(run.err));
+        QVERIFY(run.log.events.isEmpty());
+        QCOMPARE(server.lines, QStringList({"ping"}));
+    }
+    void cliApplyIgnoresAStaleSocket()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        write(dir.path() + "/visualizer.sock", "left by a crash");
+        CliRun run(dir, paths);
+        run.env.visualizerSocket = dir.path() + "/visualizer.sock";
+        QCOMPARE(run.exec({"apply", "Tron"}), 0);
+        QVERIFY(run.log.events.contains("send"));
+    }
+    void cliApplyWithoutVisualizerIsUnchanged()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        LineServer server(dir.path() + "/visualizer.sock");
+        CliRun run(dir, paths); // no visualizer socket configured
+        QCOMPARE(run.exec({"apply", "Tron"}), 0);
+        QVERIFY(run.log.events.contains("send"));
+        QVERIFY(server.lines.isEmpty());
     }
 
     void streamEnterPackets_matchStaticWithMaskTwo()
@@ -5036,6 +5232,33 @@ private:
         black.base.color = Qt::black;
         return packetData(buildPackets(black, Layout::gs76()).packets);
     }
+
+    // Runs the command line from another thread, as another process would, while this
+    // thread serves the fake visualizer socket.
+    static int execServed(CliRun &run, const QStringList &args)
+    {
+        auto code = std::async(std::launch::async, [&] { return run.exec(args); });
+        while (code.wait_for(std::chrono::milliseconds(1)) != std::future_status::ready)
+            QCoreApplication::processEvents();
+        return code.get();
+    }
+    // A command line whose systemctl is recorded and answers with the given exit code.
+    struct UnitRun {
+        UnitRun(const QTemporaryDir &dir, const ThemePaths &paths, int exitCode = 0, const QString &mainStatus = "0")
+            : run(dir, paths)
+        {
+            run.env.systemctl = [this, exitCode](const QStringList &args) {
+                calls << args.join(' ');
+                return exitCode;
+            };
+            run.env.systemctlOutput = [this, mainStatus](const QStringList &args) {
+                calls << args.join(' ');
+                return mainStatus;
+            };
+        }
+        CliRun run;
+        QStringList calls;
+    };
 
     static ThemePaths fakeTheme(const QTemporaryDir &dir, const QString &name)
     {
