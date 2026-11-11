@@ -7,7 +7,7 @@
 
 // Attaches and detaches the KLC through its own sysfs `authorized` file: writing 0 then 1
 // makes the kernel configure it again (its hidraw node reappears), writing 0 leaves it
-// disconnected, the state the controller needs to show what was sent. The package's udev
+// disconnected, its resting state (it keeps showing what was sent). The package's udev
 // rule gives that one file to the klc-light group, so no root is involved.
 class SysfsBinder : public Binder {
 public:

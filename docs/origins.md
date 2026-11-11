@@ -259,8 +259,9 @@ groups.
 ## Attaching the controller without root: sysfs `authorized` (2026-11-04)
 
 Until 0.4.0 KLC Light attached the controller to the kernel's `usb` driver through a
-root helper (`echo <port> > /sys/bus/usb/drivers/usb/bind`, then `unbind` after the send:
-the controller only shows a new burst once detached). Measured on the GS76 instead:
+root helper (`echo <port> > /sys/bus/usb/drivers/usb/bind`, then `unbind` after the send,
+on the belief that the controller only shows a new burst once detached; with `authorized`
+it shows it while attached, see 2026-11-11 below). Measured on the GS76 instead:
 
 - With the controller left without its driver by that `unbind`, writing `1` to its
   `authorized` file authorises it ("authorized to connect") but nothing configures it: no
@@ -274,3 +275,48 @@ the controller only shows a new burst once detached). Measured on the GS76 inste
   `add`, and the boot hook's `klc-light apply` showed the profile without sudo.
 
 So 0.5.0 drops the helper and its sudoers rule: `SysfsBinder` only writes that one file.
+
+## What shows while attached, and GG's host-stream mode (2026-11-11)
+
+Measured on the GS76 (klc-light 0.5.1 installed) with a throwaway
+program that attaches through `authorized`, sends, holds the controller attached for 8 s
+and only then detaches. No send failed and the kernel logged nothing in any run.
+
+### A burst shows at once, attached
+
+| burst | ends with | while attached | at detach |
+|---|---|---|---|
+| static, all red | `0D 00 02`, no `09` | red at once | stays red |
+| Rainbow (animated base) | `0D 00 02`, no `09` | shown and moving at once | — |
+| Ember (wave and pulse), as klc-light sends it | feature `09`, output `09` | shown and moving at once | no change |
+
+So the controller does not need to be detached to show a burst, and either ending shows
+it, effects included. GG names the two: output `09` is `save_to_flash`, output `0D 00 02`
+is `reset_current_lighting_mode`, which it sends after a live deploy (`post-live-deploy`
+in `ss-klc-base.lisp`). Not measured: whether `09` really writes the profile to flash on
+this firmware (what the keyboard shows after a full power-off, before the boot hook), and
+whether the controller can stay attached across suspend and restarts. klc-light keeps
+ending with `09` and detaching until those are.
+
+### Host-stream frames (`0C`)
+
+`common_lighting.lisp` names the per-key `settings_mask` values: 0 effect, 1 steady,
+2 host-stream, 4 override, 8 reactive. GG's game integration and PrismSync (one frame every
+33 ms, `prism-sync-boilerplate.lisp`) put keys in mask 2 with the usual `0E` region
+packets, send `0D 00 02` once, then stream feature reports `0C 00 <n> 00` followed by
+n × `[hid R G B]` (`direct_write_raw`). Its audio visualizer draws on a 22 × 6 bitmap
+mapped to keys by `hidcode-matrix-layout-nonvariant` in `msi-ge76-klc.lisp`.
+
+Sent here to all 113 keys of the four region packets (mask 2, black, 30 ms apart, then
+`0D 00 02`), unused bytes of each frame `FF`:
+
+| frames | result |
+|---|---|
+| 5 at 1 per second, 113 keys in one packet | keyboard black: the mask took, no frame shown |
+| 3 at 1 per second, split in packets of 57 and 56 keys, 10 ms apart | each color shown |
+| 3 more, each followed by `0D 00 02` | brief flashes: `0D 00 02` clears the frame |
+| 300 at 1 per 33 ms, split the same way, twice | smooth; 1.3 ms per packet, 1.6 ms at most |
+
+A normal `klc-light restore` after each stream showed the profile again. GG caps a frame
+at `number-of-elements` keys, 110 for the GE63 family the GS76 derives from, which fits
+113 failing; the exact limit, and streams longer than 10 s, are not measured.

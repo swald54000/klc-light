@@ -19,8 +19,9 @@ public:
     virtual QString lastError() const = 0;
 };
 
-// Attaches the keyboard to the kernel USB driver for sending and detaches it after: the
-// KLC only shows new lighting once detached.
+// Attaches the keyboard to the kernel USB driver for sending and detaches it after. The
+// KLC shows a burst as soon as it is sent, attached or not (docs/origins.md, 2026-11-11);
+// detached is kept as its resting state because that is the one validated over restarts.
 class Binder {
 public:
     virtual ~Binder() = default;
