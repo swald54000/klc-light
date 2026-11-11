@@ -332,12 +332,14 @@ these runs, and it was left detached (`authorized` 0) after each.
 | one minute of music, then `visualizer off` | the spectrum; the applied profile back at once | `on` returns in 0.35 s, `off` in 0.28 s |
 | `klc-light apply Ocean` 15 s into the stream (Jarvis applied) | the spectrum takes Ocean's colors with no break; Ocean shown after `off` | `apply` returns in 0.07 s, nothing sent by it |
 | `kill -9` of the service 10 s into the stream | the profile back by itself | unit `failed` (signal), `ExecStopPost` ran `klc-light restore`: detached within a second |
-| suspend (s2idle) for 21 s with the stream running, then wake | the profile shown before sleeping, the spectrum back a few seconds after waking | detached 2 s after waking, attached again 4 s later, unit still active |
+| suspend (s2idle) for 21 s with the stream running, then wake | the profile shown before sleeping, the spectrum back a few seconds after waking | still detached 2 s after waking, attached again by 6 s, unit still active |
+| one stream of 12 min 16 s, across that suspend and another of 28 s | — | 5.9 s of CPU time, 7.4 MiB at most; stopped cleanly |
+| stopped and started three times within 45 s (09:36:49 to 09:37:34) | — | each start waited out the interval (3 s from "Starting" to "Started"); all clean |
 
 So a `restore` after the service is killed mid-stream does take the controller out of
 host-stream mode, and the controller comes back after a suspend when it was detached
 first and attached again five seconds after waking. Holding it attached across a suspend
-is still not measured.
+is still not measured, and neither is a stream longer than those twelve minutes.
 
 ### Tuning the spectrum
 
