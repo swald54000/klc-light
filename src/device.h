@@ -4,8 +4,11 @@
 #include <QList>
 #include <QString>
 #include <functional>
+#include <memory>
 
 #include "protocol.h"
+
+class QLockFile;
 
 // The HID connection to the keyboard; faked in tests.
 class Transport {
@@ -58,9 +61,32 @@ public:
     // Build errors come back as ApplyError::Invalid; no packets means nothing to do.
     ApplyResult applyLatest(const std::function<BuildResult()> &build);
 
+    // A session keeps the lock and the attached, open controller from begin() to end(), for
+    // the visualizer's stream. begin() waits for the lock and the interval like a send; when
+    // it fails, the controller is detached and the lock released.
+    ApplyResult begin();
+    // Each packet once, `gapMs` after each; stops at the first one refused.
+    ApplyResult send(const QList<Packet> &packets, int gapMs = PacketGapMs);
+    // Closes, detaches and releases the lock; the interval before the next attach starts
+    // here. Does nothing when no session is open.
+    void end();
+    bool begun() const { return m_attached; }
+    void setLockWaitMs(int ms) { m_lockWaitMs = ms; }
+
+    ~Device();
+
 private:
     qint64 lastSend() const;
     void recordSend() const;
+    ApplyResult acquire(); // the lock, then the interval
+    ApplyResult attach();  // bind and open; on failure everything is undone
+    // A send's interval runs from its attach, as measured; a session's from its end too.
+    void detach(bool recordEnd);
+    void release();
+
+    std::unique_ptr<QLockFile> m_lock;
+    bool m_attached = false;
+    int m_lockWaitMs = LockWaitMs;
 
     Transport &m_transport;
     Binder &m_binder;

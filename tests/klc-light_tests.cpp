@@ -25,6 +25,7 @@
 #include "protocol.h"
 #include "spectrum.h"
 #include "spectrumrenderer.h"
+#include "streamsession.h"
 #include <cmath>
 #include "version.h"
 #include "themeprofile.h"
@@ -160,6 +161,14 @@ static QColor frameColor(const Frame &f, const QString &id)
         if (k.hid == hid)
             return k.color;
     return QColor();
+}
+
+static Frame plainFrame(const QColor &color)
+{
+    Frame frame;
+    for (quint8 hid : streamHids(Layout::gs76()))
+        frame.append({hid, color});
+    return frame;
 }
 
 class KlcLightTests : public QObject {
@@ -1115,6 +1124,120 @@ private slots:
         r.setProfile(p);
         QCOMPARE(frameColor(r.render(QList<double>(18, 1.0)), "KEY_SPACE"), Preview(p, Layout::gs76()).colorAt("KEY_SPACE", 0));
         QVERIFY(Preview(p, Layout::gs76()).colorAt("KEY_SPACE", 0) != QColor(200, 100, 0));
+    }
+
+    void deviceSessionKeepsTheLockUntilEnd()
+    {
+        QTemporaryDir dir;
+        FakeLog log;
+        FakeTransport t(log);
+        FakeBinder b(log);
+        Device d = fakeDevice(t, b, dir, log);
+        QCOMPARE(d.begin().error, ApplyError::None);
+        QVERIFY(d.begun());
+        QCOMPARE(log.events, QStringList({"bind", "open"}));
+        FakeLog log2;
+        FakeTransport t2(log2);
+        FakeBinder b2(log2);
+        Device other = fakeDevice(t2, b2, dir, log2);
+        other.setLockWaitMs(0);
+        QCOMPARE(other.apply({Packet{Packet::Output, QByteArray(64, '\0')}}).error, ApplyError::Locked);
+        QVERIFY(log2.events.isEmpty());
+        QCOMPARE(d.send({Packet{Packet::Output, QByteArray(64, '\0')}}).error, ApplyError::None);
+        d.end();
+        d.end();
+        QCOMPARE(log.events, QStringList({"bind", "open", "send", "close", "unbind"}));
+        QVERIFY(!d.begun());
+    }
+    void deviceBeginFailureReleasesEverything()
+    {
+        QTemporaryDir dir;
+        FakeLog log;
+        FakeTransport t(log);
+        FakeBinder b(log);
+        t.openOk = false;
+        Device d = fakeDevice(t, b, dir, log);
+        QCOMPARE(d.begin().error, ApplyError::DeviceMissing);
+        QVERIFY(!d.begun());
+        QCOMPARE(log.events.last(), QString("unbind"));
+        t.openOk = true;
+        QCOMPARE(d.begin().error, ApplyError::None); // the lock was released
+        d.end();
+    }
+    void deviceEndStartsTheInterval()
+    {
+        QTemporaryDir dir;
+        FakeLog log;
+        FakeTransport t(log);
+        FakeBinder b(log);
+        Device d = fakeDevice(t, b, dir, log);
+        d.begin();
+        log.now += 60'000;
+        d.end();
+        log.sleeps.clear();
+        d.begin();
+        QCOMPARE(log.sleeps.value(0), int(Device::MinIntervalMs));
+        d.end();
+    }
+    void streamSessionOrder()
+    {
+        QTemporaryDir dir;
+        FakeLog log;
+        FakeTransport t(log);
+        FakeBinder b(log);
+        Device d = fakeDevice(t, b, dir, log);
+        StreamSession s(d, Layout::gs76());
+        QCOMPARE(s.start().error, ApplyError::None);
+        QVERIFY(s.running());
+        QCOMPARE(log.packets.size(), 5);
+        QCOMPARE(log.packets[4].left(3), QByteArray::fromHex("0d0002"));
+        QCOMPARE(log.sleeps.mid(log.sleeps.size() - 5), QList<int>(5, int(StreamSession::EnterGapMs)));
+        QCOMPARE(s.show(plainFrame(Qt::red)).error, ApplyError::None);
+        QCOMPARE(log.packets.size(), 7);
+        QCOMPARE(s.show(plainFrame(Qt::red)).error, ApplyError::None); // identical: nothing sent
+        QCOMPARE(log.packets.size(), 7);
+        Profile black;
+        black.base.color = Qt::black;
+        const QList<Packet> restore = buildPackets(black, Layout::gs76()).packets;
+        QCOMPARE(s.stop(restore).error, ApplyError::None);
+        QCOMPARE(log.packets.size(), 7 + restore.size());
+        QCOMPARE(log.events.mid(log.events.size() - 2), QStringList({"close", "unbind"}));
+        QCOMPARE(log.events.count("bind"), 1);
+        for (const QByteArray &p : log.packets.mid(5, 2))
+            QCOMPARE(quint8(p.at(0)), quint8(0x0c));
+        QVERIFY(!s.running());
+    }
+    void streamSessionStopsAtTheFirstRefusal()
+    {
+        QTemporaryDir dir;
+        FakeLog log;
+        FakeTransport t(log);
+        FakeBinder b(log);
+        Device d = fakeDevice(t, b, dir, log);
+        StreamSession s(d, Layout::gs76());
+        s.start();
+        t.failAt = 6; // the first frame packet
+        QCOMPARE(s.show(plainFrame(Qt::red)).error, ApplyError::SendFailed);
+        QVERIFY(!s.running());
+        QCOMPARE(log.events.last(), QString("unbind"));
+        const int sent = log.packets.size();
+        QVERIFY(s.show(plainFrame(Qt::blue)).error != ApplyError::None);
+        s.stop(buildPackets(Profile(), Layout::gs76()).packets);
+        QCOMPARE(log.packets.size(), sent); // nothing more was sent
+    }
+    void streamSessionSilenceSendsNothing()
+    {
+        QTemporaryDir dir;
+        FakeLog log;
+        FakeTransport t(log);
+        FakeBinder b(log);
+        Device d = fakeDevice(t, b, dir, log);
+        StreamSession s(d, Layout::gs76());
+        s.start();
+        for (int i = 0; i < 100; ++i)
+            s.show(plainFrame(Qt::black));
+        QCOMPARE(log.packets.size(), 5); // the enter packets already left every key black
+        s.stop({});
     }
 
     void streamEnterPackets_matchStaticWithMaskTwo()
