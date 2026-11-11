@@ -6,6 +6,8 @@
 
 namespace {
 
+constexpr double kNoPeakDb = -1000; // a band that has not been heard yet
+
 // In-place radix-2 FFT; the size is a power of two.
 void fft(std::vector<std::complex<float>> &a) {
     const size_t n = a.size();
@@ -35,7 +37,8 @@ void fft(std::vector<std::complex<float>> &a) {
 } // namespace
 
 Spectrum::Spectrum(int sampleRate, int bands)
-    : m_sampleRate(sampleRate), m_bands(bands), m_ring(FftSize, 0.0f), m_window(FftSize), m_levels(bands, 0.0) {
+    : m_sampleRate(sampleRate), m_bands(bands), m_ring(FftSize, 0.0f), m_window(FftSize), m_bandRefDb(size_t(bands), kNoPeakDb),
+      m_levels(bands, 0.0) {
     for (int i = 0; i < FftSize; ++i)
         m_window[i] = float(0.5 - 0.5 * std::cos(2 * M_PI * i / double(FftSize - 1))); // Hann
 }
@@ -51,6 +54,7 @@ void Spectrum::reset() {
     std::fill(m_ring.begin(), m_ring.end(), 0.0f);
     m_next = 0;
     m_refDb = FloorRefDb;
+    std::fill(m_bandRefDb.begin(), m_bandRefDb.end(), kNoPeakDb);
     std::fill(m_levels.begin(), m_levels.end(), 0.0);
 }
 
@@ -79,13 +83,15 @@ QList<double> Spectrum::frame() {
         double peak = 0;
         for (int i = first; i <= last; ++i)
             peak = std::max(peak, double(std::abs(bins[i])));
-        db[b] = 20 * std::log10(std::max(peak / fullScale, 1e-12));
+        db[b] = 20 * std::log10(std::max(peak / fullScale, 1e-12)) + TiltDbPerOctave * std::log2(std::sqrt(low * high) / TiltPivotHz);
         loudest = std::max(loudest, db[b]);
     }
 
     m_refDb = std::max({loudest, m_refDb - RefDecayDbPerFrame, FloorRefDb});
     for (int b = 0; b < m_bands; ++b) {
-        const double raw = std::clamp((db[b] - (m_refDb - RangeDb)) / RangeDb, 0.0, 1.0);
+        m_bandRefDb[size_t(b)] = std::max(db[b], m_bandRefDb[size_t(b)] - BandRefDecayDbPerFrame);
+        const double ref = std::max(m_bandRefDb[size_t(b)], m_refDb - BandHeadroomDb);
+        const double raw = std::clamp((db[b] - (ref - RangeDb)) / RangeDb, 0.0, 1.0);
         m_levels[b] = raw >= m_levels[b] ? raw : std::max(raw, m_levels[b] - FallPerFrame);
     }
     return m_levels;

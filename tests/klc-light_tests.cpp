@@ -1726,6 +1726,64 @@ private slots:
         QVERIFY(!Library(run.dir.path() + "/klc").off());
     }
 
+    // Music carries far more energy in the bass: measured on the GS76 with real music, only
+    // the five leftmost columns ever lit. A treble 4.5 dB per octave under the bass reads level.
+    void spectrumTiltEvensOutBassAndTreble()
+    {
+        Spectrum s(48000, 18);
+        QList<double> levels;
+        qint64 n = 0;
+        const double treble = 0.5 * std::pow(10.0, -4.5 * 6 / 20); // six octaves up
+        for (int f = 0; f < 30; ++f) {
+            QList<float> block(1600);
+            for (float &v : block) {
+                v = float(0.5 * std::sin(2 * M_PI * 100 * double(n) / 48000) + treble * std::sin(2 * M_PI * 6400 * double(n) / 48000));
+                ++n;
+            }
+            s.push(block.constData(), block.size());
+            levels = s.frame();
+        }
+        const double bass = levels[bandOf(s, 18, 100)], high = levels[bandOf(s, 18, 6400)];
+        QVERIFY2(bass >= 0.85 && high >= 0.85, qPrintable(QString("bass %1 treble %2").arg(bass).arg(high)));
+        QVERIFY(levels[bandOf(s, 18, 800)] <= 0.1);
+    }
+    // With one reference for all bands, the mids of real music stayed low between a loud
+    // bass and the raised treble. A band within 12 dB of the loudest is judged against its
+    // own recent peak; a weaker one against 12 dB under the loudest, so it still shows.
+    void spectrumBandsFollowTheirOwnLevel()
+    {
+        auto twoTones = [](double secondDb) { // 100 Hz, and 200 Hz that many dB under it once tilted
+            Spectrum s(48000, 18);
+            QList<double> levels;
+            qint64 n = 0;
+            const double second = 0.5 * std::pow(10.0, (secondDb - Spectrum::TiltDbPerOctave) / 20);
+            for (int f = 0; f < 30; ++f) {
+                QList<float> block(1600);
+                for (float &v : block) {
+                    v = float(0.5 * std::sin(2 * M_PI * 100 * double(n) / 48000) + second * std::sin(2 * M_PI * 200 * double(n) / 48000));
+                    ++n;
+                }
+                s.push(block.constData(), block.size());
+                levels = s.frame();
+            }
+            return QPair<double, double>(levels[bandOf(s, 18, 100)], levels[bandOf(s, 18, 200)]);
+        };
+        const auto near = twoTones(-8);
+        QVERIFY2(near.first >= 0.95 && near.second >= 0.95, qPrintable(QString("%1 %2").arg(near.first).arg(near.second)));
+        const auto far = twoTones(-20); // 8 dB under the 12 dB headroom, over a range of 12: a third
+        QVERIFY2(far.second >= 0.25 && far.second <= 0.5, qPrintable(QString::number(far.second)));
+        QVERIFY(far.first >= 0.95);
+    }
+    // A band's reference follows its peaks and forgets them slowly. When it forgot them in a
+    // second, every column sat near its top all the time: "too full", on the keyboard.
+    void spectrumBandReferenceLastsBetweenBeats()
+    {
+        Spectrum s(48000, 18);
+        const int b = bandOf(s, 18, 100);
+        QVERIFY(spectrumOf(s, 100, 0.5, 30)[b] >= 0.95);
+        const double quieter = spectrumOf(s, 100, 0.5 * std::pow(10.0, -10.0 / 20), 30)[b]; // 10 dB down, a second later
+        QVERIFY2(quieter >= 0.1 && quieter <= 0.35, qPrintable(QString::number(quieter)));
+    }
     // Review fixes.
     void spectrumResetForgetsTheWindow()
     {
