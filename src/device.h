@@ -72,6 +72,9 @@ public:
     // here. Does nothing when no session is open.
     void end();
     bool begun() const { return m_attached; }
+    // Counts the interval from now. After a suspend the clock says the last send is long
+    // past, yet the controller has only just come back with the computer.
+    void restartInterval() { recordSend(); }
     void setLockWaitMs(int ms) { m_lockWaitMs = ms; }
 
     ~Device();

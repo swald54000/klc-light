@@ -141,6 +141,9 @@
  "Delete group": "Supprimer le groupe",
  "Visualizer": "Égaliseur",
  "Show the music's spectrum on the keyboard": "Afficher le spectre de la musique sur le clavier",
+ "The visualizer could not be stopped.": "L'égaliseur n'a pas pu être arrêté.",
+ "The visualizer could not start; see journalctl --user -u klc-light-visualizer.": "L'égaliseur n'a pas pu démarrer ; voir journalctl --user -u klc-light-visualizer.",
+ "The visualizer is running: stop it (klc-light visualizer off) to apply a profile file.": "L'égaliseur tourne : arrêtez-le (klc-light visualizer off) pour appliquer un fichier de profil.",
  "Apply a profile before starting the visualizer.": "Appliquez un profil avant de lancer l'égaliseur.",
  "Could not listen to the sound: %1": "Impossible d'écouter le son : %1",
  "“%1” will be deleted.": "« %1 » sera supprimé."

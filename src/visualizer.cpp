@@ -7,6 +7,7 @@
 #include <QDBusUnixFileDescriptor>
 #include <QDir>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QLocalSocket>
 #include <QSocketNotifier>
 #include <QStandardPaths>
@@ -14,6 +15,7 @@
 #include <QThread>
 #include <QTimer>
 
+#include <algorithm>
 #include <csignal>
 #include <sys/socket.h>
 #include <systemd/sd-daemon.h>
@@ -29,6 +31,7 @@
 #include "translator.h"
 
 QString visualizerSocketPath(const QString &runtimeDir) { return runtimeDir + "/klc-light-visualizer.sock"; }
+QString visualizerErrorPath(const QString &runtimeDir) { return runtimeDir + "/klc-light-visualizer.error"; }
 
 QString visualizerRequest(const QString &socketPath, const QString &line) {
     constexpr int kWaitMs = 500;
@@ -49,7 +52,7 @@ QString visualizerRequest(const QString &socketPath, const QString &line) {
 
 VisualizerService::VisualizerService(Device &device, AudioSource &audio, const Layout &layout, QString libraryDir,
                                      ThemePaths paths, QString socketPath, QObject *parent)
-    : QObject(parent), m_audio(audio), m_layout(layout), m_libraryDir(std::move(libraryDir)), m_paths(std::move(paths)),
+    : QObject(parent), m_device(device), m_audio(audio), m_layout(layout), m_libraryDir(std::move(libraryDir)), m_paths(std::move(paths)),
       m_socketPath(std::move(socketPath)), m_spectrum(audio.sampleRate(), SpectrumRenderer::Columns), m_renderer(layout),
       m_session(device, layout), m_samples(size_t(audio.sampleRate())) {
     qRegisterMetaType<ApplyResult>();
@@ -86,7 +89,7 @@ ApplyResult VisualizerService::start() {
         m_audio.stop();
         return started;
     }
-    m_lastFrame.clear();
+    beginStream();
     // A socket file left by a killed service would keep this one from listening.
     QLocalServer::removeServer(m_socketPath);
     if (!m_server.listen(m_socketPath)) {
@@ -97,10 +100,24 @@ ApplyResult VisualizerService::start() {
     return {};
 }
 
+void VisualizerService::beginStream() {
+    m_spectrum.reset();
+    m_lastFrame.clear();
+    m_emptyTicks = 0;
+}
+
 void VisualizerService::tick() {
     if (!m_session.running())
         return;
-    const int count = m_audio.read(m_samples.data(), int(m_samples.size()));
+    int count = m_audio.read(m_samples.data(), int(m_samples.size()));
+    // Silence arrives as zeros. No samples at all means the sound server stopped delivering:
+    // after a moment that counts as silence too, or the last bars would stay lit for good.
+    constexpr int kStalledTicks = 5;
+    m_emptyTicks = count > 0 ? 0 : m_emptyTicks + 1;
+    if (m_emptyTicks >= kStalledTicks) {
+        count = std::min(int(m_samples.size()), m_audio.sampleRate() * FrameMs / 1000);
+        std::fill_n(m_samples.begin(), count, 0.0f);
+    }
     m_spectrum.push(m_samples.data(), count);
     const Frame frame = m_renderer.render(m_spectrum.frame());
     if (frame == m_lastFrame)
@@ -128,21 +145,31 @@ void VisualizerService::tick() {
         subscriber->write(line);
 }
 
-void VisualizerService::stop() {
+ApplyResult VisualizerService::stop() {
+    ApplyResult restored;
     if (m_session.running()) {
-        m_session.stop(m_restore);
+        restored = m_session.stop(m_restore);
         m_audio.stop();
     }
     m_asleep = false;
     closeSocket();
+    return restored;
 }
 
 void VisualizerService::prepareForSleep(bool sleeping) {
     if (sleeping) {
         if (!m_session.running())
             return;
-        m_session.stop(m_restore);
+        const ApplyResult restored = m_session.stop(m_restore);
         m_audio.stop();
+        // Detached either way: the computer may sleep.
+        if (restored.error != ApplyError::None) {
+            // The controller refused a send: nothing more goes to it, waking included.
+            closeSocket();
+            emit asleep();
+            emit failed(restored);
+            return;
+        }
         m_asleep = true;
         emit asleep();
         return;
@@ -152,7 +179,9 @@ void VisualizerService::prepareForSleep(bool sleeping) {
     m_asleep = false;
     // The profile may have changed while the stream was down.
     loadProfile();
-    m_lastFrame.clear();
+    beginStream();
+    // The clock ran during the sleep, but the controller has only just come back.
+    m_device.restartInterval();
     QString audioError;
     ApplyResult resumed;
     if (!m_audio.start(&audioError))
@@ -257,11 +286,22 @@ int runVisualizer(int argc, char *argv[]) {
         return 1;
     }
     QSocketNotifier signalNotifier(g_signalPipe[0], QSocketNotifier::Read);
+    const QString errorPath = visualizerErrorPath(runtime);
+    QFile::remove(errorPath);
+    // The journal gets the reason, and so does `klc-light visualizer on`, through a file.
+    auto report = [&err, errorPath](const ApplyResult &result) {
+        err << result.message << "\n";
+        err.flush();
+        QFile file(errorPath);
+        if (file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            file.write(result.message.toUtf8() + "\n");
+        return exitCodeOf(result);
+    };
     QObject::connect(&signalNotifier, &QSocketNotifier::activated, &app, [&] {
         signalNotifier.setEnabled(false);
         sd_notify(0, "STOPPING=1");
-        service.stop();
-        app.exit(0);
+        const ApplyResult stopped = service.stop();
+        app.exit(stopped.error == ApplyError::None ? 0 : report(stopped));
     });
     struct sigaction action {};
     action.sa_handler = onSignal;
@@ -270,15 +310,10 @@ int runVisualizer(int argc, char *argv[]) {
     sigaction(SIGINT, &action, nullptr);
 
     const ApplyResult started = service.start();
-    if (started.error != ApplyError::None) {
-        err << started.message << "\n";
-        return exitCodeOf(started);
-    }
-    QObject::connect(&service, &VisualizerService::failed, &app, [&](const ApplyResult &result) {
-        err << result.message << "\n";
-        err.flush();
-        app.exit(exitCodeOf(result));
-    });
+    if (started.error != ApplyError::None)
+        return report(started);
+    QObject::connect(&service, &VisualizerService::failed, &app,
+                     [&](const ApplyResult &result) { app.exit(report(result)); });
     // The computer waits for the keyboard to be detached before sleeping: a delay lock is
     // held while the stream runs and dropped once the service is ready to sleep.
     QDBusUnixFileDescriptor sleepLock;

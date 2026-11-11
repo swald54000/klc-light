@@ -47,6 +47,13 @@ void Spectrum::push(const float *mono, int count) {
     }
 }
 
+void Spectrum::reset() {
+    std::fill(m_ring.begin(), m_ring.end(), 0.0f);
+    m_next = 0;
+    m_refDb = FloorRefDb;
+    std::fill(m_levels.begin(), m_levels.end(), 0.0);
+}
+
 double Spectrum::bandLowHz(int band) const {
     return LowHz * std::pow(HighHz / LowHz, double(band) / m_bands);
 }

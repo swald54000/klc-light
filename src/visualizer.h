@@ -22,6 +22,8 @@ class QLocalSocket;
 //   frames  -> ok      then "frame <hex>" for every frame shown, <hex> being hid R G B per key
 //   other   -> error
 QString visualizerSocketPath(const QString &runtimeDir);
+// Where the service leaves the reason it stopped on an error, for `klc-light visualizer on`.
+QString visualizerErrorPath(const QString &runtimeDir);
 // Sends one line and returns the one-line answer; empty when nothing is listening. Waits
 // half a second at most.
 QString visualizerRequest(const QString &socketPath, const QString &line);
@@ -43,8 +45,9 @@ public:
     ApplyResult start();
     // One frame: called every FrameMs.
     void tick();
-    // Puts the profile back (black if the keyboard was turned off), detaches, closes the socket.
-    void stop();
+    // Puts the profile back (black if the keyboard was turned off), detaches, closes the
+    // socket. The error, if the profile could not be put back.
+    ApplyResult stop();
     bool running() const { return m_session.running(); }
 
 public slots:
@@ -67,6 +70,9 @@ private:
     void onLine(QLocalSocket *client, const QByteArray &line);
     void closeSocket();
 
+    void beginStream();
+
+    Device &m_device;
     AudioSource &m_audio;
     const Layout &m_layout;
     QString m_libraryDir;
@@ -82,6 +88,7 @@ private:
     QList<QLocalSocket *> m_subscribers;
     std::vector<float> m_samples;
     bool m_asleep = false;
+    int m_emptyTicks = 0; // frames in a row for which no sample arrived
 };
 
 // `klc-light visualizer run`: the service's process. Exit codes as `apply`.

@@ -6,6 +6,8 @@
 
 #include "device.h"
 #include <QFile>
+#include <QFileInfo>
+#include <QCoreApplication>
 
 #include "document.h"
 #include "layout.h"
@@ -104,19 +106,27 @@ static int runVisualizerCommand(const QStringList &args, CliEnv &env) {
     }
     if (!env.systemctl)
         return finish(env, json, false, "no service manager", 0, "visualizer");
+    // The service leaves the reason it stopped on an error next to its socket.
+    const QString errorPath = env.visualizerSocket.isEmpty() ? QString()
+                                                             : visualizerErrorPath(QFileInfo(env.visualizerSocket).path());
+    auto reason = [&errorPath] { return errorPath.isEmpty() ? QString() : QString::fromUtf8(readFileOrEmpty(errorPath)).trimmed(); };
     if (word == "off") {
         // Stopping a stopped unit succeeds too.
-        const bool stopped = env.systemctl({"stop", kVisualizerUnit}) == 0;
-        return finish(env, json, stopped, stopped ? QString() : QString("The visualizer could not be stopped."), 0, "visualizer");
+        const bool stopped = env.systemctl({"stop", kVisualizerUnit}) == 0 && reason().isEmpty();
+        const QString why = reason().isEmpty() ? QCoreApplication::translate("Cli", "The visualizer could not be stopped.") : reason();
+        return finish(env, json, stopped, stopped ? QString() : why, 0, "visualizer");
     }
+    if (!errorPath.isEmpty())
+        QFile::remove(errorPath); // an older failure's reason
     if (env.systemctl({"start", kVisualizerUnit}) == 0)
         return finish(env, json, true, QString(), 0, "visualizer");
     // The service's own exit code says whether the controller is gone, as `apply` would.
     const bool absent = env.systemctlOutput
                         && env.systemctlOutput({"show", "-p", "ExecMainStatus", "--value", kVisualizerUnit}).trimmed() == "2";
-    finish(env, json, false,
-           absent ? keyboardAbsentMessage() : QString("The visualizer could not start; see journalctl --user -u klc-light-visualizer."),
-           0, "visualizer");
+    QString why = absent ? keyboardAbsentMessage() : reason();
+    if (why.isEmpty())
+        why = QCoreApplication::translate("Cli", "The visualizer could not start; see journalctl --user -u klc-light-visualizer.");
+    finish(env, json, false, why, 0, "visualizer");
     return absent ? 2 : 1;
 }
 
@@ -210,7 +220,12 @@ int runCli(const QStringList &args, CliEnv &env) {
     // While the visualizer runs it owns the keyboard: nothing is sent here. The profile is
     // recorded as a send would record it, and the visualizer told, so it takes the new
     // colors now and gives this profile back when it stops.
-    if (!env.visualizerSocket.isEmpty() && visualizerRequest(env.visualizerSocket, "ping") == "ok") {
+    auto visualizerUp = [&env] {
+        return !env.visualizerSocket.isEmpty() && visualizerRequest(env.visualizerSocket, "ping") == "ok";
+    };
+    // The exit status, or nothing when the visualizer stopped before it took the profile:
+    // it has then given the old one back, and this one has to be sent for real.
+    auto recordForVisualizer = [&]() -> std::optional<int> {
         if (restore)
             return finish(env, json, true, QString());
         const BuildResult built = build();
@@ -219,15 +234,20 @@ int runCli(const QStringList &args, CliEnv &env) {
         if (built.packets.isEmpty())
             return finish(env, json, true, QString(), 0, source);
         if (!off && libraryName.isEmpty())
-            return finish(env, json, false, "The visualizer is running: stop it (klc-light visualizer off) to apply a profile file.",
+            return finish(env, json, false,
+                          QCoreApplication::translate("Cli", "The visualizer is running: stop it (klc-light visualizer off) to apply a profile file."),
                           0, source);
         Library lib(env.libraryDir);
         lib.setOff(off);
         if (!libraryName.isEmpty())
             lib.setApplied(libraryName);
-        visualizerRequest(env.visualizerSocket, "reload");
+        if (visualizerRequest(env.visualizerSocket, "reload") != "ok")
+            return std::nullopt;
         return finish(env, json, true, QString(), 0, source);
-    }
+    };
+    if (visualizerUp())
+        if (const auto code = recordForVisualizer())
+            return *code;
 
     if (env.fake) {
         const BuildResult built = build();
@@ -246,6 +266,11 @@ int runCli(const QStringList &args, CliEnv &env) {
         count = int(built.packets.size());
         return built;
     });
+    // The visualizer takes the lock as it starts, before it listens: by the time the wait for
+    // the lock gave up, it answers.
+    if (result.error == ApplyError::Locked && visualizerUp())
+        if (const auto code = recordForVisualizer())
+            return *code;
     if (result.error != ApplyError::None) {
         finish(env, json, false, result.message, count, source);
         // A distinct status lets the theme hooks tell the user to power off.

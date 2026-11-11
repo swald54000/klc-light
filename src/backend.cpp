@@ -96,6 +96,7 @@ Backend::Backend(ThemePaths paths, QString libraryDir, KeyLabels labels, Sender 
         emit cooldownChanged();
     });
     connect(this, &Backend::applyFinished, this, &Backend::onApplyFinished, Qt::QueuedConnection);
+    connect(this, &Backend::applySettled, this, &Backend::settleApply, Qt::QueuedConnection);
 
     loadSavedColors();
     open();
@@ -722,19 +723,28 @@ void Backend::apply() {
     m_busy = true;
     emit busyChanged();
     const QList<Packet> packets = built.packets;
+    m_lastPackets = packets;
     QThread *thread = QThread::create([this, packets] {
         // While the visualizer runs it owns the keyboard: the profile is only recorded, and
         // the visualizer told once it is (onApplyFinished).
-        m_recordedOnly = !m_visualizerSocket.isEmpty() && visualizerRequest(m_visualizerSocket, "ping") == "ok";
-        emit applyFinished(m_recordedOnly ? ApplyResult{} : m_sender(packets));
+        auto visualizerUp = [this] {
+            return !m_visualizerSocket.isEmpty() && visualizerRequest(m_visualizerSocket, "ping") == "ok";
+        };
+        bool recorded = visualizerUp();
+        ApplyResult result = recorded ? ApplyResult{} : m_sender(packets);
+        // The visualizer takes the lock as it starts, before it listens.
+        if (!recorded && result.error == ApplyError::Locked && visualizerUp()) {
+            recorded = true;
+            result = {};
+        }
+        m_recordedOnly = recorded;
+        emit applyFinished(result);
     });
     connect(thread, &QThread::finished, thread, &QObject::deleteLater);
     thread->start();
 }
 
 void Backend::onApplyFinished(const ApplyResult &result) {
-    m_busy = false;
-    emit busyChanged();
     if (result.error != ApplyError::None) {
         setError(result.message);
     } else {
@@ -749,9 +759,28 @@ void Backend::onApplyFinished(const ApplyResult &result) {
                 break;
             }
         emit libraryChanged();
-        if (m_recordedOnly)
-            visualizerRequest(m_visualizerSocket, "reload");
+        if (m_recordedOnly) {
+            // Now that the profile is recorded, the visualizer is told, off this thread. If
+            // it stopped meanwhile it gave the old profile back: this one is sent for real.
+            m_recordedOnly = false;
+            const QList<Packet> packets = m_lastPackets;
+            QThread *thread = QThread::create([this, packets] {
+                if (visualizerRequest(m_visualizerSocket, "reload") == "ok")
+                    emit applySettled();
+                else
+                    emit applyFinished(m_sender(packets));
+            });
+            connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+            thread->start();
+            return; // still busy
+        }
     }
+    settleApply();
+}
+
+void Backend::settleApply() {
+    m_busy = false;
+    emit busyChanged();
     m_cooldownMs = Device::MinIntervalMs;
     m_cooldown.start();
     emit cooldownChanged();

@@ -23,6 +23,8 @@ public:
     // Keeps the last FftSize samples.
     void push(const float *mono, int count);
     QList<double> frame();
+    // Forgets what was heard: a stream that starts again must not replay the old sound.
+    void reset();
     // The band's lower edge; band `bands` gives HighHz.
     double bandLowHz(int band) const;
 

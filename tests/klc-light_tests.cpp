@@ -192,8 +192,11 @@ public:
     }
     void stop() override {}
     int sampleRate() const override { return 48000; }
+    bool stalled = false; // the sound server delivers nothing at all
     int read(float *out, int max) override
     {
+        if (stalled)
+            return 0;
         const int count = qMin(max, 1600);
         for (int i = 0; i < count; ++i)
             out[i] = float(amplitude * std::sin(2 * M_PI * hz * double(n++) / 48000));
@@ -249,17 +252,19 @@ static QList<QByteArray> packetData(const QList<Packet> &packets)
 // Stands for the visualizer's socket: records each line it gets and answers it.
 class LineServer : public QObject {
 public:
-    explicit LineServer(const QString &path, const QByteArray &answer = "ok")
+    // `silent`: the lines (counted from 0) that get no answer.
+    explicit LineServer(const QString &path, const QByteArray &answer = "ok", const QSet<int> &silent = {})
     {
         QLocalServer::removeServer(path);
         m_server.listen(path);
-        connect(&m_server, &QLocalServer::newConnection, this, [this, answer] {
+        connect(&m_server, &QLocalServer::newConnection, this, [this, answer, silent] {
             while (QLocalSocket *client = m_server.nextPendingConnection()) {
                 clients << client;
-                connect(client, &QLocalSocket::readyRead, this, [this, client, answer] {
+                connect(client, &QLocalSocket::readyRead, this, [this, client, answer, silent] {
                     while (client->canReadLine()) {
                         lines << QString::fromUtf8(client->readLine()).trimmed();
-                        client->write(answer + "\n");
+                        if (!silent.contains(lines.size() - 1))
+                            client->write(answer + "\n");
                     }
                 });
             }
@@ -1595,6 +1600,7 @@ private slots:
         v.service.prepareForSleep(true);
         const int sent = v.run.log.packets.size();
         v.run.log.sleeps.clear();
+        v.run.log.now += 3'600'000; // the clock runs while the computer sleeps
         v.service.prepareForSleep(false);
         QCOMPARE(awake.count(), 1);
         QVERIFY(v.service.running());
@@ -1718,6 +1724,165 @@ private slots:
         QCOMPARE(server.lines, QStringList({"frames", "ping", "reload"}));
         QCOMPARE(Library(run.dir.path() + "/klc").applied(), run.backend->profileName());
         QVERIFY(!Library(run.dir.path() + "/klc").off());
+    }
+
+    // Review fixes.
+    void spectrumResetForgetsTheWindow()
+    {
+        Spectrum s(48000, 18);
+        QVERIFY(spectrumOf(s, 100, 0.5, 30)[bandOf(s, 18, 100)] >= 0.9);
+        s.reset();
+        for (double v : s.frame())
+            QCOMPARE(v, 0.0);
+    }
+    // No samples at all (the sound server went away) is not silence: nothing new would ever
+    // be analysed, and the last bars would stay lit.
+    void visualizerGoesDarkWhenAudioStops()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        VisRun v(dir, paths);
+        QCOMPARE(v.service.start().error, ApplyError::None);
+        v.ticks(30);
+        QCOMPARE(lastStreamColor(v.run.log.packets, bottomKeyOfTone(100)), QColor("#00F2FF"));
+        v.audio.stalled = true;
+        v.ticks(60);
+        QCOMPARE(lastStreamColor(v.run.log.packets, bottomKeyOfTone(100)), QColor(Qt::black));
+        v.service.stop();
+    }
+    void visualizerStopReportsARefusedRestore()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        VisRun v(dir, paths);
+        QCOMPARE(v.service.start().error, ApplyError::None);
+        v.run.transport.failAt = v.run.transport.sent + 1; // the first restore packet
+        QCOMPARE(v.service.stop().error, ApplyError::SendFailed);
+        QCOMPARE(v.run.log.events.last(), QString("unbind"));
+        VisRun fine(dir, paths);
+        fine.run.log.now += 60'000;
+        QCOMPARE(fine.service.start().error, ApplyError::None);
+        QCOMPARE(fine.service.stop().error, ApplyError::None);
+    }
+    // After a refused send nothing more is sent: waking must not attach and stream again.
+    void visualizerRefusedRestoreBeforeSleepIsTerminal()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        VisRun v(dir, paths);
+        QSignalSpy asleep(&v.service, &VisualizerService::asleep);
+        QSignalSpy failed(&v.service, &VisualizerService::failed);
+        QCOMPARE(v.service.start().error, ApplyError::None);
+        v.ticks(30);
+        v.run.transport.failAt = v.run.transport.sent + 1;
+        v.service.prepareForSleep(true);
+        QCOMPARE(asleep.count(), 1); // the computer is not kept awake
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(failed.first().first().value<ApplyResult>().error, ApplyError::SendFailed);
+        QCOMPARE(visualizerRequest(v.socket, "ping"), QString());
+        const int sent = v.run.log.packets.size();
+        v.service.prepareForSleep(false);
+        v.ticks(30);
+        QCOMPARE(v.run.log.events.count("bind"), 1);
+        QCOMPARE(v.run.log.packets.size(), sent);
+    }
+    // The visualizer holds the lock from the moment it starts, before it listens: a theme
+    // change in that window must still be recorded, not fail as "another change is being sent".
+    void cliApplyLockedByTheStartingVisualizerRecords()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        addProfile(dir, "Ember", "#FF2000");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        FakeLog holderLog;
+        FakeTransport holderTransport(holderLog);
+        FakeBinder holderBinder(holderLog);
+        Device holder = fakeDevice(holderTransport, holderBinder, dir, holderLog);
+        QCOMPARE(holder.begin().error, ApplyError::None);
+        LineServer server(dir.path() + "/visualizer.sock", "ok", {0}); // not listening yet at the first ping
+        CliRun run(dir, paths);
+        run.device.setLockWaitMs(0);
+        run.env.visualizerSocket = dir.path() + "/visualizer.sock";
+        QCOMPARE(execServed(run, {"apply", "Ember"}), 0);
+        QVERIFY(run.log.events.isEmpty());
+        QCOMPARE(Library(dir.path() + "/klc").applied(), QString("Ember"));
+        QCOMPARE(server.lines, QStringList({"ping", "ping", "reload"}));
+        holder.end();
+    }
+    // The visualizer stops between the ping and the reload: it has given the old profile
+    // back, so the new one must really be sent.
+    void cliApplySendsWhenTheVisualizerStopsMidway()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        addProfile(dir, "Ember", "#FF2000");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        LineServer server(dir.path() + "/visualizer.sock", "ok", {1}); // the reload gets no answer
+        CliRun run(dir, paths);
+        run.env.visualizerSocket = dir.path() + "/visualizer.sock";
+        QCOMPARE(execServed(run, {"apply", "Ember"}), 0);
+        QVERIFY(run.log.events.contains("send"));
+        QCOMPARE(run.log.packets.first().mid(4, 3).toHex(), QByteArray("ff2000"));
+        QCOMPARE(Library(dir.path() + "/klc").applied(), QString("Ember"));
+    }
+    void backendApplyLockedByTheStartingVisualizerRecords()
+    {
+        EditorRun run;
+        LineServer server(run.dir.path() + "/visualizer.sock", "ok", {1}); // frames, then a ping too early
+        liveBackend(run);
+        QTRY_VERIFY(run.backend->visualizer());
+        run.result = {ApplyError::Locked, "locked"};
+        run.backend->openBase();
+        run.backend->setColor(QColor("#123456"));
+        run.backend->apply();
+        QTRY_VERIFY(server.lines.contains("reload"));
+        QTRY_VERIFY(!run.backend->busy());
+        QCOMPARE(run.sent, 1);
+        QVERIFY2(run.backend->error().isEmpty(), qPrintable(run.backend->error()));
+        QCOMPARE(server.lines, QStringList({"frames", "ping", "ping", "reload"}));
+        QCOMPARE(Library(run.dir.path() + "/klc").applied(), run.backend->profileName());
+    }
+    void backendApplySendsWhenTheVisualizerStopsMidway()
+    {
+        EditorRun run;
+        LineServer server(run.dir.path() + "/visualizer.sock", "ok", {2}); // frames, ping, then no answer
+        liveBackend(run);
+        QTRY_VERIFY(run.backend->visualizer());
+        run.backend->openBase();
+        run.backend->setColor(QColor("#123456"));
+        run.backend->apply();
+        QTRY_COMPARE(run.sent, 1);
+        QTRY_VERIFY(!run.backend->busy());
+        QVERIFY(run.backend->error().isEmpty());
+    }
+    // Why the visualizer did not start is what the person needs, not a pointer to the journal.
+    void cliVisualizerOnReportsTheServiceReason()
+    {
+        QTemporaryDir dir;
+        CliRun run(dir, fakeTheme(dir, "tron"));
+        run.env.visualizerSocket = dir.path() + "/visualizer.sock";
+        write(visualizerErrorPath(dir.path()), "left by an older failure");
+        run.env.systemctl = [&](const QStringList &args) {
+            if (args.value(0) == "start")
+                write(visualizerErrorPath(dir.path()), "Apply a profile before starting the visualizer.\n");
+            return 1;
+        };
+        run.env.systemctlOutput = [](const QStringList &) { return QString("1"); };
+        QCOMPARE(run.exec({"visualizer", "on"}), 1);
+        QCOMPARE(run.err, QString("Apply a profile before starting the visualizer.\n"));
+        // A failure that left no reason keeps the pointer to the journal, not an old reason.
+        run.err.clear();
+        run.env.systemctl = [](const QStringList &) { return 1; };
+        QCOMPARE(run.exec({"visualizer", "on"}), 1);
+        QVERIFY2(run.err.contains("journalctl"), qPrintable(run.err));
     }
 
     void cliVisualizerOnStartsTheUnit()

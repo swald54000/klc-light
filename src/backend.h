@@ -173,6 +173,7 @@ signals:
     void libraryChanged();
     void pickingChanged();
     void applyFinished(const ApplyResult &result);
+    void applySettled();
     void visualizerChanged();
     void liveFrame();
     void visualizerSwitched(int code, const QString &error);
@@ -204,6 +205,7 @@ private:
     Sender m_sender;
 
     // The visualizer, when it runs: the preview shows its frames instead of the profile.
+    void settleApply(); // the apply is over: not busy, cooldown running
     void connectLive();
     void onLiveLine(const QByteArray &line);
     void dropLive();
@@ -212,6 +214,7 @@ private:
     QLocalSocket m_live;
     QTimer m_liveRetry; // the visualizer may be started from the bar or a terminal
     bool m_visualizer = false;
+    QList<Packet> m_lastPackets; // what the last apply built
     std::atomic<bool> m_recordedOnly{false}; // the last apply went to the visualizer, not the keyboard
     int m_liveRevision = 0;
     QHash<quint8, QColor> m_liveColors;
