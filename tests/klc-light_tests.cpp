@@ -23,6 +23,8 @@
 #include "preview.h"
 #include "profile.h"
 #include "protocol.h"
+#include "spectrum.h"
+#include <cmath>
 #include "version.h"
 #include "themeprofile.h"
 
@@ -121,6 +123,28 @@ private:
 };
 
 Q_DECLARE_METATYPE(Profile)
+
+// One tone pushed frame by frame, as the service feeds the spectrum; the last frame's levels.
+static QList<double> spectrumOf(Spectrum &s, double hz, double amplitude, int frames, int rate = 48000)
+{
+    static qint64 n = 0;
+    QList<double> levels;
+    for (int f = 0; f < frames; ++f) {
+        QList<float> block(rate / 30);
+        for (float &v : block)
+            v = float(amplitude * std::sin(2 * M_PI * hz * double(n++) / rate));
+        s.push(block.constData(), block.size());
+        levels = s.frame();
+    }
+    return levels;
+}
+static int bandOf(const Spectrum &s, int bands, double hz)
+{
+    for (int b = 0; b < bands; ++b)
+        if (hz >= s.bandLowHz(b) && hz < s.bandLowHz(b + 1))
+            return b;
+    return -1;
+}
 
 class KlcLightTests : public QObject {
     Q_OBJECT
@@ -935,6 +959,70 @@ private slots:
         const auto back = readDocument(dir.filePath("sub/v2.klc.json"), &errors);
         QVERIFY2(back, qPrintable(errors.join("; ")));
         QCOMPARE(back->name, QString("Saved"));
+    }
+
+    void spectrumBandsAreGeometric()
+    {
+        Spectrum s(48000, 18);
+        QCOMPARE(s.bandLowHz(0), 40.0);
+        QVERIFY(qAbs(s.bandLowHz(18) - 16000.0) < 1e-6);
+        QVERIFY(qAbs(s.bandLowHz(9) - 800.0) < 1e-6); // sqrt(40 x 16000)
+    }
+    void spectrumBassToneLightsLowBandOnly()
+    {
+        Spectrum s(48000, 18);
+        const QList<double> l = spectrumOf(s, 100, 0.5, 30);
+        QCOMPARE(l.size(), 18);
+        QVERIFY(l[bandOf(s, 18, 100)] >= 0.9);
+        for (int b = bandOf(s, 18, 1000); b < 18; ++b)
+            QVERIFY2(l[b] <= 0.1, qPrintable(QString::number(b)));
+    }
+    void spectrumTrebleToneLightsHighBandOnly()
+    {
+        Spectrum s(48000, 18);
+        const QList<double> l = spectrumOf(s, 5000, 0.5, 30);
+        QVERIFY(l[bandOf(s, 18, 5000)] >= 0.9);
+        for (int b = 0; b <= bandOf(s, 18, 500); ++b)
+            QVERIFY(l[b] <= 0.1);
+    }
+    void spectrumSilenceIsZero()
+    {
+        Spectrum s(48000, 18);
+        for (double v : spectrumOf(s, 100, 0.0, 30))
+            QCOMPARE(v, 0.0);
+    }
+    void spectrumFallsGradually()
+    {
+        Spectrum s(48000, 18);
+        const int b = bandOf(s, 18, 100);
+        double previous = spectrumOf(s, 100, 0.5, 30)[b];
+        bool reachedZero = false;
+        for (int f = 0; f < 60; ++f) {
+            const double now = spectrumOf(s, 100, 0.0, 1)[b];
+            QVERIFY(now <= previous);
+            QVERIFY(previous - now <= Spectrum::FallPerFrame + 1e-9);
+            previous = now;
+            reachedZero = reachedZero || now == 0.0;
+        }
+        QVERIFY(reachedZero);
+    }
+    void spectrumQuietToneStillReads() // amplitude 0.01 = -40 dBFS
+    {
+        Spectrum s(48000, 18);
+        QVERIFY(spectrumOf(s, 100, 0.01, 30)[bandOf(s, 18, 100)] >= 0.5);
+    }
+    void spectrumNoiseFloorStaysDark() // amplitude 0.0005 = -66 dBFS
+    {
+        Spectrum s(48000, 18);
+        for (double v : spectrumOf(s, 100, 0.0005, 300))
+            QCOMPARE(v, 0.0);
+    }
+    void spectrumResumesAfterLongSilence()
+    {
+        Spectrum s(48000, 18);
+        spectrumOf(s, 100, 0.5, 30);
+        spectrumOf(s, 100, 0.0, 1800); // one minute
+        QVERIFY(spectrumOf(s, 100, 0.5, 3)[bandOf(s, 18, 100)] >= 0.9);
     }
 
     void streamEnterPackets_matchStaticWithMaskTwo()
