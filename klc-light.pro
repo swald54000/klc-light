@@ -1,4 +1,4 @@
-QT += core gui qml quick quickcontrols2 network
+QT += core gui qml quick quickcontrols2 network dbus
 
 CONFIG += c++17 release link_pkgconfig
 PKGCONFIG += hidapi-hidraw xkbcommon libpipewire-0.3 libsystemd

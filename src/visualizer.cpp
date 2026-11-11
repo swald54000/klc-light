@@ -1,6 +1,10 @@
 #include "visualizer.h"
 
 #include <QCoreApplication>
+#include <QDBusConnection>
+#include <QDBusInterface>
+#include <QDBusReply>
+#include <QDBusUnixFileDescriptor>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QLocalSocket>
@@ -129,7 +133,38 @@ void VisualizerService::stop() {
         m_session.stop(m_restore);
         m_audio.stop();
     }
+    m_asleep = false;
     closeSocket();
+}
+
+void VisualizerService::prepareForSleep(bool sleeping) {
+    if (sleeping) {
+        if (!m_session.running())
+            return;
+        m_session.stop(m_restore);
+        m_audio.stop();
+        m_asleep = true;
+        emit asleep();
+        return;
+    }
+    if (!m_asleep)
+        return;
+    m_asleep = false;
+    // The profile may have changed while the stream was down.
+    loadProfile();
+    m_lastFrame.clear();
+    QString audioError;
+    ApplyResult resumed;
+    if (!m_audio.start(&audioError))
+        resumed = {ApplyError::Invalid, QCoreApplication::translate("Visualizer", "Could not listen to the sound: %1").arg(audioError)};
+    else if (resumed = m_session.start(); resumed.error != ApplyError::None)
+        m_audio.stop();
+    if (resumed.error != ApplyError::None) {
+        closeSocket();
+        emit failed(resumed);
+        return;
+    }
+    emit awake();
 }
 
 void VisualizerService::closeSocket() {
@@ -244,6 +279,22 @@ int runVisualizer(int argc, char *argv[]) {
         err.flush();
         app.exit(exitCodeOf(result));
     });
+    // The computer waits for the keyboard to be detached before sleeping: a delay lock is
+    // held while the stream runs and dropped once the service is ready to sleep.
+    QDBusUnixFileDescriptor sleepLock;
+    auto takeSleepLock = [&sleepLock] {
+        QDBusInterface login("org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager",
+                             QDBusConnection::systemBus());
+        const QDBusReply<QDBusUnixFileDescriptor> reply =
+            login.call("Inhibit", "sleep", "KLC Light", "Detaching the keyboard lighting controller", "delay");
+        sleepLock = reply.isValid() ? reply.value() : QDBusUnixFileDescriptor();
+    };
+    takeSleepLock();
+    QDBusConnection::systemBus().connect("org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager",
+                                         "PrepareForSleep", &service, SLOT(prepareForSleep(bool)));
+    QObject::connect(&service, &VisualizerService::asleep, &app, [&sleepLock] { sleepLock = QDBusUnixFileDescriptor(); });
+    QObject::connect(&service, &VisualizerService::awake, &app, takeSleepLock);
+
     QTimer timer;
     timer.setTimerType(Qt::PreciseTimer);
     QObject::connect(&timer, &QTimer::timeout, &service, &VisualizerService::tick);

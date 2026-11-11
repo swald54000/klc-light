@@ -1,4 +1,4 @@
-QT += core gui quick quickcontrols2 network testlib
+QT += core gui quick quickcontrols2 network dbus testlib
 CONFIG += c++17 testcase link_pkgconfig
 PKGCONFIG += hidapi-hidraw xkbcommon libpipewire-0.3 libsystemd
 TARGET = klc-light_tests

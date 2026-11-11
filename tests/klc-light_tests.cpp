@@ -1559,6 +1559,89 @@ private slots:
         }
     }
 
+    void visualizerSleepRestoresAndDetaches()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        VisRun v(dir, paths);
+        QSignalSpy asleep(&v.service, &VisualizerService::asleep);
+        QCOMPARE(v.service.start().error, ApplyError::None);
+        v.ticks(30);
+        v.service.prepareForSleep(true);
+        QCOMPARE(asleep.count(), 1);
+        const QList<QByteArray> restore = profilePackets(dir, "Tron");
+        QCOMPARE(v.run.log.packets.mid(v.run.log.packets.size() - restore.size()), restore);
+        QCOMPARE(v.run.log.events.last(), QString("unbind"));
+        const int sent = v.run.log.packets.size();
+        v.ticks(30);
+        QCOMPARE(v.run.log.packets.size(), sent);
+        QCOMPARE(askVisualizer(v.socket, "ping"), QString("ok"));
+        v.service.stop();
+        QCOMPARE(v.run.log.packets.size(), sent); // already given back
+        QCOMPARE(visualizerRequest(v.socket, "ping"), QString());
+    }
+    void visualizerWakeResumes()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        VisRun v(dir, paths);
+        QSignalSpy awake(&v.service, &VisualizerService::awake);
+        QCOMPARE(v.service.start().error, ApplyError::None);
+        v.ticks(30);
+        v.service.prepareForSleep(true);
+        const int sent = v.run.log.packets.size();
+        v.run.log.sleeps.clear();
+        v.service.prepareForSleep(false);
+        QCOMPARE(awake.count(), 1);
+        QVERIFY(v.service.running());
+        QCOMPARE(v.run.log.events.count("bind"), 2);
+        QCOMPARE(v.run.log.sleeps.value(0), int(Device::MinIntervalMs));
+        QCOMPARE(v.run.log.packets.size(), sent + 5);
+        QCOMPARE(v.run.log.packets.last().left(3), QByteArray::fromHex("0d0002"));
+        v.ticks(30);
+        QCOMPARE(lastStreamColor(v.run.log.packets.mid(sent), bottomKeyOfTone(100)), QColor("#00F2FF"));
+        v.service.stop();
+    }
+    void visualizerWakeFailureIsReported()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        VisRun v(dir, paths);
+        QSignalSpy failed(&v.service, &VisualizerService::failed);
+        QCOMPARE(v.service.start().error, ApplyError::None);
+        v.service.prepareForSleep(true);
+        v.run.transport.openOk = false;
+        v.service.prepareForSleep(false);
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(failed.first().first().value<ApplyResult>().error, ApplyError::DeviceMissing);
+        QVERIFY(!v.service.running());
+        QCOMPARE(visualizerRequest(v.socket, "ping"), QString());
+    }
+    void visualizerSleepTwiceIsHarmless()
+    {
+        QTemporaryDir dir;
+        const ThemePaths paths = fakeTheme(dir, "tron");
+        addProfile(dir, "Tron", "#00F2FF", "tron");
+        Library(dir.path() + "/klc").setApplied("Tron");
+        VisRun v(dir, paths);
+        v.service.prepareForSleep(false); // not started: nothing to wake
+        QVERIFY(v.run.log.events.isEmpty());
+        QCOMPARE(v.service.start().error, ApplyError::None);
+        v.service.prepareForSleep(true);
+        v.service.prepareForSleep(true);
+        v.service.prepareForSleep(false);
+        v.service.prepareForSleep(false);
+        QCOMPARE(v.run.log.events.count("bind"), 2);
+        QCOMPARE(v.run.log.events.count("unbind"), 1);
+        v.service.stop();
+    }
+
     void cliVisualizerOnStartsTheUnit()
     {
         QTemporaryDir dir;

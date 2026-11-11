@@ -47,9 +47,19 @@ public:
     void stop();
     bool running() const { return m_session.running(); }
 
+public slots:
+    // logind's PrepareForSleep. Before sleeping the profile goes back and the keyboard is
+    // detached, the state it is known to sleep well in; the socket stays. After waking the
+    // stream starts again. Holding the controller attached across suspend was never measured.
+    void prepareForSleep(bool sleeping);
+
 signals:
-    // A send was refused. The keyboard is already detached and nothing more is sent.
+    // A send was refused, or the keyboard did not come back after waking. It is already
+    // detached and nothing more is sent.
     void failed(const ApplyResult &result);
+    // The keyboard is detached and the computer may sleep; the stream is back after waking.
+    void asleep();
+    void awake();
 
 private:
     QString loadProfile(); // empty, or why there is nothing to show
@@ -71,6 +81,7 @@ private:
     QList<QLocalSocket *> m_clients;
     QList<QLocalSocket *> m_subscribers;
     std::vector<float> m_samples;
+    bool m_asleep = false;
 };
 
 // `klc-light visualizer run`: the service's process. Exit codes as `apply`.
