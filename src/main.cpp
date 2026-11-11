@@ -1,6 +1,8 @@
 // klc-light — edits the per-key lighting of the MSI GS76 keyboard, one profile per Omarchy theme.
 
 #include <QProcess>
+#include <QJsonObject>
+#include <QJsonDocument>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QQmlApplicationEngine>
@@ -100,8 +102,16 @@ int main(int argc, char *argv[]) {
             err << (packet.kind == Packet::Feature ? "F " : "O ") << packet.data.toHex() << "\n";
         return ApplyResult{};
     };
+    // The editor switches the visualizer as the bar widget does: through the command line.
+    Backend::VisualizerSwitch visualizerSwitch = [](bool on, QString *error) {
+        QProcess process;
+        process.start(QCoreApplication::applicationFilePath(), {"visualizer", on ? "on" : "off", "--json"});
+        process.waitForFinished(-1);
+        *error = QJsonDocument::fromJson(process.readAllStandardOutput()).object().value("error").toString();
+        return process.exitStatus() == QProcess::NormalExit ? process.exitCode() : 1;
+    };
     Backend backend(ThemePaths::standard(), QDir::homePath() + "/.config/klc-light", KeyLabels::current(), sender,
-                    QDir::homePath() + "/.config/klc-light/colors.json");
+                    QDir::homePath() + "/.config/klc-light/colors.json", visualizerSocketPath(runtime), visualizerSwitch);
 
     QQmlApplicationEngine engine;
     QObject::connect(&translator, &Translator::changed, &engine, &QQmlEngine::retranslate);

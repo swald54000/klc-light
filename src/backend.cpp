@@ -1,5 +1,7 @@
 #include "backend.h"
 
+#include "visualizer.h"
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
@@ -51,10 +53,32 @@ int indexOf(const Document &doc, const QString &name) {
 } // namespace
 
 Backend::Backend(ThemePaths paths, QString libraryDir, KeyLabels labels, Sender sender, QString colorsPath,
-                 QObject *parent)
+                 QString visualizerSocket, VisualizerSwitch visualizerSwitch, QObject *parent)
     : QObject(parent), m_paths(std::move(paths)), m_library(std::move(libraryDir)), m_labels(std::move(labels)),
-      m_sender(std::move(sender)), m_colorsPath(std::move(colorsPath)) {
+      m_sender(std::move(sender)), m_visualizerSocket(std::move(visualizerSocket)),
+      m_visualizerSwitch(std::move(visualizerSwitch)), m_colorsPath(std::move(colorsPath)) {
     qRegisterMetaType<ApplyResult>();
+    connect(&m_live, &QLocalSocket::connected, this, [this] { m_live.write("frames\n"); });
+    connect(&m_live, &QLocalSocket::readyRead, this, [this] {
+        while (m_live.canReadLine())
+            onLiveLine(m_live.readLine().trimmed());
+    });
+    connect(&m_live, &QLocalSocket::disconnected, this, &Backend::dropLive);
+    connect(&m_live, &QLocalSocket::errorOccurred, this, &Backend::dropLive);
+    m_liveRetry.setInterval(2000);
+    connect(&m_liveRetry, &QTimer::timeout, this, &Backend::connectLive);
+    connect(this, &Backend::visualizerSwitched, this, [this](int code, const QString &error) {
+        m_busy = false;
+        emit busyChanged();
+        if (code != 0)
+            setError(error);
+        else
+            connectLive();
+    }, Qt::QueuedConnection);
+    if (!m_visualizerSocket.isEmpty()) {
+        m_liveRetry.start();
+        QTimer::singleShot(0, this, &Backend::connectLive);
+    }
     for (const Key &key : Layout::gs76().keys()) {
         QVariantMap entry{{"id", key.id}, {"label", m_labels.label(key)}, {"x", key.x}, {"y", key.y},
                           {"left", key.x - key.w / 2}, {"right", key.x + key.w / 2},
@@ -78,6 +102,10 @@ Backend::Backend(ThemePaths paths, QString libraryDir, KeyLabels labels, Sender 
 }
 
 Backend::~Backend() {
+    // The socket is a member destroyed after this body, and would report its disconnection
+    // to an object whose later members are already gone.
+    m_live.disconnect(this);
+    m_live.abort();
     // A send in flight finishes on its own thread; wait for it rather than cutting the
     // keyboard off mid-send.
     QElapsedTimer timer;
@@ -616,7 +644,61 @@ void Backend::setReactiveDuration(int duration) {
 }
 
 QColor Backend::previewColor(const QString &id, qint64 ms) const {
+    if (m_visualizer) {
+        // What the keyboard shows right now; the power key's LED is F1's.
+        const Key *key = Layout::gs76().byId(Layout::gs76().lightSource(id));
+        return key ? m_liveColors.value(key->hid, Qt::black) : QColor(Qt::black);
+    }
     return m_preview ? m_preview->colorAt(id, ms) : QColor(Qt::black);
+}
+
+void Backend::connectLive() {
+    if (m_visualizerSocket.isEmpty() || m_live.state() != QLocalSocket::UnconnectedState)
+        return;
+    m_live.connectToServer(m_visualizerSocket);
+}
+
+void Backend::onLiveLine(const QByteArray &line) {
+    if (line == "ok" && !m_visualizer) {
+        m_visualizer = true;
+        m_liveColors.clear();
+        ++m_liveRevision;
+        emit visualizerChanged();
+        emit liveFrame();
+    } else if (line.startsWith("frame ")) {
+        const QByteArray bytes = QByteArray::fromHex(line.mid(6));
+        for (int i = 0; i + 3 < bytes.size(); i += 4)
+            m_liveColors.insert(quint8(bytes.at(i)), QColor(quint8(bytes.at(i + 1)), quint8(bytes.at(i + 2)), quint8(bytes.at(i + 3))));
+        ++m_liveRevision;
+        emit liveFrame();
+    }
+}
+
+// The visualizer stopped, or was killed: back to the profile's own preview.
+void Backend::dropLive() {
+    m_live.abort();
+    if (!m_visualizer)
+        return;
+    m_visualizer = false;
+    m_liveColors.clear();
+    ++m_liveRevision;
+    emit visualizerChanged();
+    emit liveFrame();
+}
+
+void Backend::setVisualizer(bool on) {
+    if (m_busy || !m_visualizerSwitch)
+        return;
+    setError(QString());
+    m_busy = true;
+    emit busyChanged();
+    QThread *thread = QThread::create([this, on] {
+        QString error;
+        const int code = m_visualizerSwitch(on, &error);
+        emit visualizerSwitched(code, error);
+    });
+    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+    thread->start();
 }
 
 void Backend::apply() {
@@ -640,7 +722,12 @@ void Backend::apply() {
     m_busy = true;
     emit busyChanged();
     const QList<Packet> packets = built.packets;
-    QThread *thread = QThread::create([this, packets] { emit applyFinished(m_sender(packets)); });
+    QThread *thread = QThread::create([this, packets] {
+        // While the visualizer runs it owns the keyboard: the profile is only recorded, and
+        // the visualizer told once it is (onApplyFinished).
+        m_recordedOnly = !m_visualizerSocket.isEmpty() && visualizerRequest(m_visualizerSocket, "ping") == "ok";
+        emit applyFinished(m_recordedOnly ? ApplyResult{} : m_sender(packets));
+    });
     connect(thread, &QThread::finished, thread, &QObject::deleteLater);
     thread->start();
 }
@@ -662,6 +749,8 @@ void Backend::onApplyFinished(const ApplyResult &result) {
                 break;
             }
         emit libraryChanged();
+        if (m_recordedOnly)
+            visualizerRequest(m_visualizerSocket, "reload");
     }
     m_cooldownMs = Device::MinIntervalMs;
     m_cooldown.start();

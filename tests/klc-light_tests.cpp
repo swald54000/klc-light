@@ -1642,6 +1642,84 @@ private slots:
         v.service.stop();
     }
 
+    void backendShowsLiveFrames()
+    {
+        EditorRun run;
+        LineServer server(run.dir.path() + "/visualizer.sock");
+        liveBackend(run);
+        QVERIFY(!run.backend->visualizer());
+        QTRY_VERIFY(run.backend->visualizer());
+        QCOMPARE(server.lines, QStringList{"frames"});
+        QCOMPARE(run.backend->previewColor("KEY_Q", 0), QColor(Qt::black)); // no frame yet: silence
+        const int revision = run.backend->liveRevision();
+        server.clients.first()->write(frameLine({{"KEY_Q", Qt::red}, {"KEY_F1", Qt::green}}));
+        QTRY_COMPARE(run.backend->previewColor("KEY_Q", 0), QColor(Qt::red));
+        QVERIFY(run.backend->liveRevision() > revision);
+        QCOMPARE(run.backend->previewColor("KEY_A", 0), QColor(Qt::black));
+        QCOMPARE(run.backend->previewColor("KEY_POWER", 0), QColor(Qt::green)); // F1's output lights it
+    }
+    void backendFallsBackWhenTheServiceDies()
+    {
+        EditorRun run;
+        run.backend->openBase();
+        run.backend->setColor(QColor("#123456"));
+        const QColor normal = run.backend->previewColor("KEY_Q", 0);
+        QVERIFY(normal != QColor(Qt::black));
+        QVERIFY(run.backend->save());
+        auto server = std::make_unique<LineServer>(run.dir.path() + "/visualizer.sock");
+        liveBackend(run);
+        QTRY_VERIFY(run.backend->visualizer());
+        server->clients.first()->write(frameLine({{"KEY_Q", Qt::red}}));
+        QTRY_COMPARE(run.backend->previewColor("KEY_Q", 0), QColor(Qt::red));
+        QSignalSpy changed(run.backend, &Backend::visualizerChanged);
+        const int revision = run.backend->liveRevision();
+        server.reset(); // the service is killed
+        QTRY_VERIFY(!run.backend->visualizer());
+        QVERIFY(changed.count() >= 1);
+        QVERIFY(run.backend->liveRevision() > revision);
+        QCOMPARE(run.backend->previewColor("KEY_Q", 0), normal);
+    }
+    void backendSwitchesTheVisualizer()
+    {
+        EditorRun run;
+        std::atomic<int> ons{0}, offs{0}, code{0}; // the switch runs on another thread
+        liveBackend(run, [&](bool on, QString *error) {
+            ++(on ? ons : offs);
+            if (code != 0)
+                *error = "no sound today";
+            return int(code);
+        });
+        run.backend->setVisualizer(true);
+        QTRY_COMPARE(int(ons), 1);
+        QTRY_VERIFY(!run.backend->busy());
+        QVERIFY(run.backend->error().isEmpty());
+        run.backend->setVisualizer(false);
+        QTRY_COMPARE(int(offs), 1);
+        QTRY_VERIFY(!run.backend->busy());
+        code = 1;
+        run.backend->setVisualizer(true);
+        QTRY_COMPARE(run.backend->error(), QString("no sound today"));
+        QVERIFY(!run.backend->visualizer());
+    }
+    void backendApplyDuringTheStreamOnlyRecords()
+    {
+        EditorRun run;
+        Library(run.dir.path() + "/klc").setOff(true);
+        LineServer server(run.dir.path() + "/visualizer.sock");
+        liveBackend(run);
+        QTRY_VERIFY(run.backend->visualizer());
+        run.backend->openBase();
+        run.backend->setColor(QColor("#123456"));
+        run.backend->apply();
+        QTRY_VERIFY(server.lines.contains("reload"));
+        QTRY_VERIFY(!run.backend->busy());
+        QCOMPARE(run.sent, 0);
+        QVERIFY(run.backend->error().isEmpty());
+        QCOMPARE(server.lines, QStringList({"frames", "ping", "reload"}));
+        QCOMPARE(Library(run.dir.path() + "/klc").applied(), run.backend->profileName());
+        QVERIFY(!Library(run.dir.path() + "/klc").off());
+    }
+
     void cliVisualizerOnStartsTheUnit()
     {
         QTemporaryDir dir;
@@ -5258,6 +5336,29 @@ private:
         run.backend = new Backend(run.paths, run.dir.path() + "/klc", KeyLabels::fromRmlvo("fr", ""),
                                   [&run](const QList<Packet> &) { ++run.sent; while (run.hold) QThread::msleep(5); return run.result; },
                                   run.dir.path() + "/colors.json");
+    }
+
+    // The editor again, this time looking for a visualizer at <dir>/visualizer.sock.
+    static void liveBackend(EditorRun &run, std::function<int(bool, QString *)> visualizerSwitch = {})
+    {
+        delete run.backend;
+        run.backend = new Backend(run.paths, run.dir.path() + "/klc", KeyLabels::fromRmlvo("fr", ""),
+                                  [&run](const QList<Packet> &) { ++run.sent; return run.result; },
+                                  run.dir.path() + "/colors.json", run.dir.path() + "/visualizer.sock",
+                                  std::move(visualizerSwitch));
+    }
+    // A frame as the visualizer sends it to subscribers: the given keys lit, the rest black.
+    static QByteArray frameLine(const QList<QPair<QString, QColor>> &lit)
+    {
+        QByteArray bytes;
+        for (quint8 hid : streamHids(Layout::gs76())) {
+            QColor color = Qt::black;
+            for (const auto &key : lit)
+                if (Layout::gs76().byId(key.first)->hid == hid)
+                    color = key.second;
+            bytes.append(char(hid)).append(char(color.red())).append(char(color.green())).append(char(color.blue()));
+        }
+        return "frame " + bytes.toHex() + "\n";
     }
 
     // Runs the command line against a fake theme and a fake keyboard.

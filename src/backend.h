@@ -1,5 +1,9 @@
 #pragma once
 
+#include <atomic>
+#include <QHash>
+#include <QLocalSocket>
+
 #include <QColor>
 #include <QObject>
 #include <QStringList>
@@ -42,6 +46,9 @@ class Backend : public QObject {
     Q_PROPERTY(int brightness READ brightness WRITE setBrightness NOTIFY profileChanged)
     Q_PROPERTY(int speed READ speed WRITE setSpeed NOTIFY profileChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
+    // True while the music visualizer runs and feeds the preview.
+    Q_PROPERTY(bool visualizer READ visualizer NOTIFY visualizerChanged)
+    Q_PROPERTY(int liveRevision READ liveRevision NOTIFY liveFrame) // bumps with each frame
     Q_PROPERTY(int cooldownMs READ cooldownMs NOTIFY cooldownChanged)
     Q_PROPERTY(QString error READ error NOTIFY errorChanged)
     Q_PROPERTY(QString notice READ notice NOTIFY errorChanged)
@@ -59,9 +66,12 @@ class Backend : public QObject {
 
 public:
     using Sender = std::function<ApplyResult(const QList<Packet> &)>;
+    // Starts or stops the music visualizer (`klc-light visualizer on|off`): 0, or a code and why.
+    using VisualizerSwitch = std::function<int(bool on, QString *error)>;
 
+    // `visualizerSocket`: where the visualizer listens; empty to never look for it.
     Backend(ThemePaths paths, QString libraryDir, KeyLabels labels, Sender sender, QString colorsPath,
-            QObject *parent = nullptr);
+            QString visualizerSocket = {}, VisualizerSwitch visualizerSwitch = {}, QObject *parent = nullptr);
     ~Backend() override;
 
     QVariantList keys() const { return m_keys; }
@@ -95,6 +105,9 @@ public:
     QString linkedTheme() const { return fresh().themeOf(m_doc.name); }
     QStringList themes() const { return installedThemes(m_paths); }
 
+    bool visualizer() const { return m_visualizer; }
+    int liveRevision() const { return m_liveRevision; }
+    Q_INVOKABLE void setVisualizer(bool on);
     Q_INVOKABLE void openBase();
     Q_INVOKABLE void openGroup(int index); // clears the selection
     Q_INVOKABLE void openReactive();
@@ -160,6 +173,9 @@ signals:
     void libraryChanged();
     void pickingChanged();
     void applyFinished(const ApplyResult &result);
+    void visualizerChanged();
+    void liveFrame();
+    void visualizerSwitched(int code, const QString &error);
 
 private:
     enum class Kind { Base, Group, Selection, Reactive };
@@ -186,6 +202,19 @@ private:
     Library m_library;
     KeyLabels m_labels;
     Sender m_sender;
+
+    // The visualizer, when it runs: the preview shows its frames instead of the profile.
+    void connectLive();
+    void onLiveLine(const QByteArray &line);
+    void dropLive();
+    QString m_visualizerSocket;
+    VisualizerSwitch m_visualizerSwitch;
+    QLocalSocket m_live;
+    QTimer m_liveRetry; // the visualizer may be started from the bar or a terminal
+    bool m_visualizer = false;
+    std::atomic<bool> m_recordedOnly{false}; // the last apply went to the visualizer, not the keyboard
+    int m_liveRevision = 0;
+    QHash<quint8, QColor> m_liveColors;
     QString m_colorsPath;
     QVariantList m_keys;
 

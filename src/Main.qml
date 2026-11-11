@@ -217,6 +217,21 @@ ApplicationWindow {
                     ToolTip.visible: hovered
                 }
                 Button {
+                    objectName: "visualizerButton"
+                    text: qsTr("Visualizer")
+                    flat: true
+                    checkable: true
+                    checked: backend.visualizer
+                    enabled: !backend.busy
+                    // The service answers through backend.visualizer: keep the button on it.
+                    onClicked: {
+                        backend.setVisualizer(!backend.visualizer)
+                        checked = Qt.binding(function() { return backend.visualizer })
+                    }
+                    ToolTip.text: qsTr("Show the music's spectrum on the keyboard")
+                    ToolTip.visible: hovered
+                }
+                Button {
                     objectName: "applyButton"
                     text: qsTr("Apply")
                     highlighted: true

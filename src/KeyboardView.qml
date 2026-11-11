@@ -66,8 +66,10 @@ Item {
             readonly property bool selected: backend.selection.indexOf(modelData.id) >= 0
             // Key of the open group: a lighter veil and a thin outline, apart from the selection.
             readonly property bool inGroup: backend.groupKeys.indexOf(modelData.id) >= 0
-            // Reading revision re-evaluates the color after every edit.
-            readonly property color light: backend.revision >= 0 ? backend.previewColor(modelData.id, view.clock) : "black"
+            // Reading revision re-evaluates the color after every edit, liveRevision with
+            // every frame the music visualizer shows on the keyboard.
+            readonly property color light: backend.revision >= 0 && backend.liveRevision >= 0
+                                           ? backend.previewColor(modelData.id, view.clock) : "black"
             // How bright the LED is, to fade the glow out for dark or switched-off keys.
             readonly property real level: Math.max(light.r, light.g, light.b)
             x: r.x

@@ -8,6 +8,8 @@
   "other": "%n effect layers removed so the effect shows on the whole keyboard (Ctrl+Z to undo)."
  },
  "Step duration": "Step duration",
+ "Visualizer": "Visualizer",
+ "Show the music's spectrum on the keyboard": "Show the music's spectrum on the keyboard",
  "Click, Ctrl+click, drag · ? for help": "Click, Ctrl+click, drag · ? for help",
  "Dismiss": "Dismiss",
  "Remove this step": "Remove this step",
