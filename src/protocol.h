@@ -23,6 +23,24 @@ struct BuildResult {
 // `errors` is not empty.
 BuildResult buildPackets(const Profile &profile, const Layout &layout);
 
+// GG's host-stream mode (docs/origins.md, 2026-11-11): keys in mask 2 take their color
+// from frames the computer sends, for as long as it sends them.
+struct KeyColor {
+    quint8 hid;
+    QColor color;
+    bool operator==(const KeyColor &o) const { return hid == o.hid && color == o.color; }
+};
+using Frame = QList<KeyColor>;
+// The most keys one frame packet may carry: 113 in one packet are not shown, 57 are.
+constexpr int kStreamKeysPerPacket = 57;
+// Every code the stream addresses, in the order of the enter packets.
+QList<quint8> streamHids(const Layout &layout);
+// Four region packets with every key black in mask 2, then the output report 0D 00 02.
+// That report goes out once: sent after a frame, it clears it.
+QList<Packet> streamEnterPackets(const Layout &layout);
+// Feature reports 0C 00 <n> 00 followed by n × [hid R G B], unused bytes FF.
+QList<Packet> streamFramePackets(const Frame &frame);
+
 // What a wave tells the controller (effect packet 0x8C..0x95, 0x9A), as SteelSeries GG
 // encodes it: a point in the controller's units, the axes the distance is measured along
 // (x only: horizontal, y only: vertical, both: radial), the propagation speed and whether

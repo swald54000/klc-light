@@ -19,7 +19,7 @@ constexpr int kFeatureSize = 524;
 constexpr int kOutputSize = 64;
 constexpr int kFragmentsPerRegion = 42;
 
-enum : quint8 { kMaskEffect = 0, kMaskSteady = 1, kMaskReactive = 8 };
+enum : quint8 { kMaskEffect = 0, kMaskSteady = 1, kMaskHostStream = 2, kMaskReactive = 8 };
 
 // The captured "aqua" preset of msi-perkeyrgb, the only effect packets validated on this
 // firmware; new effects reuse its packets and change only the color cycle.
@@ -273,6 +273,62 @@ BuildResult buildPackets(const Profile &profile, const Layout &layout) {
     if (!result.errors.isEmpty())
         result.packets.clear();
     return result;
+}
+
+namespace {
+const QList<Region> kStreamRegions{Region::Alphanum, Region::Enter, Region::Modifiers, Region::Numpad};
+
+// The region's codes as the static packets send them: each real code once.
+QList<quint8> uniqueHids(const Layout &layout, Region region) {
+    QList<quint8> hids;
+    for (quint8 hid : layout.regionHids(region))
+        if (hid != 0 && !hids.contains(hid))
+            hids.append(hid);
+    return hids;
+}
+} // namespace
+
+QList<quint8> streamHids(const Layout &layout) {
+    QList<quint8> hids;
+    for (Region region : kStreamRegions)
+        hids += uniqueHids(layout, region);
+    return hids;
+}
+
+QList<Packet> streamEnterPackets(const Layout &layout) {
+    QList<Packet> packets;
+    for (Region region : kStreamRegions) {
+        QList<QByteArray> fragments;
+        for (quint8 hid : uniqueHids(layout, region))
+            fragments.append(fragment(Qt::black, nullptr, 0, kMaskHostStream, hid));
+        packets.append({Packet::Feature, regionPacket(fragments, true)});
+    }
+    QByteArray reset(kOutputSize, '\0');
+    reset[0] = 0x0d;
+    reset[2] = 0x02;
+    packets.append({Packet::Output, reset});
+    return packets;
+}
+
+QList<Packet> streamFramePackets(const Frame &frame) {
+    QList<Packet> packets;
+    for (int from = 0; from < frame.size(); from += kStreamKeysPerPacket) {
+        const int count = std::min<int>(kStreamKeysPerPacket, frame.size() - from);
+        QByteArray data(kFeatureSize, '\xff');
+        data[0] = 0x0c;
+        data[1] = 0;
+        data[2] = char(count);
+        data[3] = 0;
+        for (int i = 0; i < count; ++i) {
+            const KeyColor &key = frame[from + i];
+            data[4 + i * 4] = char(key.hid);
+            data[5 + i * 4] = char(key.color.red());
+            data[6 + i * 4] = char(key.color.green());
+            data[7 + i * 4] = char(key.color.blue());
+        }
+        packets.append({Packet::Feature, data});
+    }
+    return packets;
 }
 
 Profile builtinProfile(const QString &name) {

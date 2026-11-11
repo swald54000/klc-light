@@ -937,6 +937,49 @@ private slots:
         QCOMPARE(back->name, QString("Saved"));
     }
 
+    void streamEnterPackets_matchStaticWithMaskTwo()
+    {
+        const Layout &layout = Layout::gs76();
+        const QList<Packet> enter = streamEnterPackets(layout);
+        Profile black;
+        black.base.color = Qt::black;
+        const QList<Packet> stat = buildPackets(black, layout).packets; // 4 regions + output 09
+        QCOMPARE(enter.size(), 5);
+        for (int i = 0; i < 4; ++i) {
+            QCOMPARE(enter[i].kind, Packet::Feature);
+            QCOMPARE(enter[i].data.size(), 524);
+            QByteArray expected = stat[i].data;
+            for (int k = 0; k < quint8(expected.at(2)); ++k)
+                expected[4 + k * 12 + 9] = 2; // host-stream
+            QCOMPARE(enter[i].data, expected);
+        }
+        QCOMPARE(enter[4].kind, Packet::Output);
+        QCOMPARE(enter[4].data.size(), 64);
+        QCOMPARE(enter[4].data.left(3), QByteArray::fromHex("0d0002"));
+        QCOMPARE(enter[4].data.mid(3), QByteArray(61, '\0'));
+    }
+
+    void streamFramePackets_splitAt57()
+    {
+        const QList<quint8> hids = streamHids(Layout::gs76());
+        QCOMPARE(hids.size(), 113);
+        QCOMPARE(QSet<quint8>(hids.begin(), hids.end()).size(), 113);
+        Frame frame;
+        for (int i = 0; i < hids.size(); ++i)
+            frame.append({hids[i], QColor(i, 255 - i, 7)});
+        const QList<Packet> packets = streamFramePackets(frame);
+        QCOMPARE(packets.size(), 2);
+        QCOMPARE(packets[0].data.left(4), QByteArray::fromHex("0c003900")); // 57
+        QCOMPARE(packets[1].data.left(4), QByteArray::fromHex("0c003800")); // 56
+        for (const Packet &p : packets) {
+            QCOMPARE(p.kind, Packet::Feature);
+            QCOMPARE(p.data.size(), 524);
+        }
+        QCOMPARE(packets[0].data.mid(4, 4), QByteArray(1, char(hids[0])) + QByteArray::fromHex("00ff07"));
+        QCOMPARE(packets[1].data.mid(4 + 56 * 4), QByteArray(524 - 4 - 56 * 4, '\xff'));
+        QCOMPARE(streamFramePackets({}).size(), 0);
+    }
+
     void protocolStaticAll()
     {
         Profile profile;
