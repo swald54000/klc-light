@@ -19,6 +19,8 @@ Panel {
   property bool busy: false      // a send is running
   property string error: ""
   readonly property bool off: library.off === true
+  // The music visualizer runs: it owns the keyboard until stopped.
+  readonly property bool visualizer: library.visualizer === true
   readonly property string applied: library.applied || ""
   readonly property string currentTheme: library.currentTheme || ""
   readonly property var profiles: Array.isArray(library.profiles) ? library.profiles : []
@@ -106,6 +108,7 @@ Panel {
     text: "󰌌"
     dimmed: root.off || !root.available
     tooltipText: (!root.available ? strings.t("unavailable")
+                  : root.visualizer ? strings.t("tooltip.visualizer")
                   : root.off ? strings.t("tooltip.off")
                   : root.applied !== "" ? root.applied : strings.t("tooltip.none"))
                  + "\n" + strings.t("tooltip.clicks")
@@ -228,6 +231,19 @@ Panel {
             fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
             onClicked: root.send(root.off ? ["apply"] : ["off"])
           }
+        }
+
+        Button {
+          visible: root.available
+          width: parent.width
+          iconText: "󰝚"
+          text: root.visualizer ? strings.t("panel.visualizer_off") : strings.t("panel.visualizer_on")
+          bordered: true
+          enabled: !root.busy
+          fontSize: Style.font.bodySmall
+          foreground: root.bar ? root.bar.foreground : Color.foreground
+          fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+          onClicked: root.send(["visualizer", root.visualizer ? "off" : "on"])
         }
 
         Text {

@@ -10,6 +10,7 @@ controller (USB `1038:113a`), made for [Omarchy](https://omarchy.org) on Arch Li
 - Waves in eight directions, or rippling toward or away from any key; reactive keys that
   light up when pressed.
 - An animated on-screen preview, undo and redo, and nothing sent until you press Apply.
+- A music visualizer: the spectrum of what the computer plays, in the profile's colors.
 - A command line for scripts and hooks, and a bar widget for Omarchy's shell.
 
 ## Supported hardware
@@ -81,6 +82,26 @@ A keyboard icon (dimmed while the lighting is off) whose tooltip names the appli
 profile. Click it for the profile list (a click applies one), right-click to turn the
 keyboard off, middle-click to turn it back on; the panel also opens the editor. It
 follows what the editor and the hooks apply.
+
+### Music visualizer
+
+```sh
+klc-light visualizer on    # the keyboard shows the spectrum of what is playing
+klc-light visualizer off   # the applied profile is back
+```
+
+Low frequencies rise on the left of the keyboard, high ones on the right, in the colors of
+the applied profile; silence leaves the keyboard dark. The editor's Visualizer button and
+the bar widget do the same, and the editor's preview shows what the keyboard shows.
+
+- While it runs, `klc-light apply`, `klc-light off` and theme changes send nothing: the new
+  profile recolors the spectrum at once and is what comes back when the visualizer stops.
+  A profile file (`klc-light apply some.json`) is refused until then.
+- It is a user service (`klc-light-visualizer.service`) that only runs on demand, never at
+  login. It gives the profile back and detaches the keyboard before the computer sleeps,
+  and resumes after; if it is killed, the profile is restored.
+- It listens to the default audio output through PipeWire, and needs a profile to have been
+  applied once.
 
 ## Use
 
